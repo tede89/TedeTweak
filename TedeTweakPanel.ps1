@@ -205,3 +205,4 @@ Add-Type -AssemblyName PresentationFramework
                 <TabItem Header="Tweaks">
                     <ScrollViewer Background="#111318">
                         <StackPanel Margin="4" 
+"@
