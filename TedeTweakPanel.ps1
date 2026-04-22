@@ -1,4 +1,10 @@
 Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
+Add-Type -AssemblyName WindowsBase
+
+# =========================================================
+# CORE
+# =========================================================
 
 function Test-IsAdmin {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -96,12 +102,29 @@ function Stop-ProcessSafe {
     }
 }
 
+function Clear-DirectoryContentSafe {
+    param([string]$Path)
+    try {
+        if (Test-Path $Path) {
+            Get-ChildItem -Path $Path -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            return 'Pulita cartella: ' + $Path
+        }
+        return 'SKIP cartella non trovata: ' + $Path
+    }
+    catch {
+        return 'SKIP pulizia ' + $Path + ': ' + $_.Exception.Message
+    }
+}
+
+# =========================================================
+# WORKSPACE / LOG / BACKUP
+# =========================================================
+
 $script:TedeWorkspaceInitialized = $false
 $script:TedeDataRoot = $null
 $script:TedeBackupRoot = $null
 $script:TedeLogRoot = $null
 $script:TedeCurrentLog = $null
-$script:TedeLatestBackup = $null
 
 function Initialize-TedeWorkspace {
     if ($script:TedeWorkspaceInitialized) { return }
@@ -130,9 +153,8 @@ function Write-TedeLog {
         [string]$Message,
         [string]$Level = 'INFO'
     )
-
     Initialize-TedeWorkspace
-    $line = ('[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] [' + $Level + '] ' + $Message)
+    $line = '[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] [' + $Level + '] ' + $Message
     Add-Content -Path $script:TedeCurrentLog -Value $line -Encoding UTF8
 }
 
@@ -160,22 +182,21 @@ function New-TedeSafetyBackup {
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $backupDir = Join-Path $script:TedeBackupRoot $stamp
     New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
-    $script:TedeLatestBackup = $backupDir
 
     $items = New-Object System.Collections.Generic.List[string]
     $items.Add('Cartella backup: ' + $backupDir)
 
     foreach ($pair in @(
-        @{ Path = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management'; File = 'memory-management.reg' },
-        @{ Path = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl'; File = 'priority-control.reg' },
-        @{ Path = 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile'; File = 'multimedia-systemprofile.reg' },
-        @{ Path = 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters'; File = 'tcpip-parameters.reg' },
-        @{ Path = 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Ndu'; File = 'ndu.reg' },
-        @{ Path = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power'; File = 'session-power.reg' },
-        @{ Path = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power'; File = 'power.reg' },
-        @{ Path = 'HKCU\\Control Panel\\Mouse'; File = 'hkcu-mouse.reg' },
-        @{ Path = 'HKCU\\Control Panel\\Keyboard'; File = 'hkcu-keyboard.reg' },
-        @{ Path = 'HKCU\\Software\\Microsoft\\GameBar'; File = 'hkcu-gamebar.reg' }
+        @{ Path = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'; File = 'memory-management.reg' },
+        @{ Path = 'HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl'; File = 'priority-control.reg' },
+        @{ Path = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'; File = 'multimedia-systemprofile.reg' },
+        @{ Path = 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'; File = 'tcpip-parameters.reg' },
+        @{ Path = 'HKLM\SYSTEM\CurrentControlSet\Services\Ndu'; File = 'ndu.reg' },
+        @{ Path = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power'; File = 'session-power.reg' },
+        @{ Path = 'HKLM\SYSTEM\CurrentControlSet\Control\Power'; File = 'power.reg' },
+        @{ Path = 'HKCU\Control Panel\Mouse'; File = 'hkcu-mouse.reg' },
+        @{ Path = 'HKCU\Control Panel\Keyboard'; File = 'hkcu-keyboard.reg' },
+        @{ Path = 'HKCU\Software\Microsoft\GameBar'; File = 'hkcu-gamebar.reg' }
     )) {
         $items.Add((Export-RegistryBackupSafe -RegistryPath $pair.Path -OutputFile (Join-Path $backupDir $pair.File)))
     }
@@ -192,34 +213,6 @@ function New-TedeSafetyBackup {
     return $items
 }
 
-function Restore-LatestTedeBackup {
-    Initialize-TedeWorkspace
-
-    if (-not (Test-Path $script:TedeBackupRoot)) {
-        return @('SKIP nessuna cartella backup disponibile')
-    }
-
-    $latest = Get-ChildItem -Path $script:TedeBackupRoot -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($null -eq $latest) {
-        return @('SKIP nessun backup trovato')
-    }
-
-    $result = New-Object System.Collections.Generic.List[string]
-    $result.Add('Ripristino da: ' + $latest.FullName)
-    foreach ($file in Get-ChildItem -Path $latest.FullName -Filter '*.reg' -ErrorAction SilentlyContinue) {
-        try {
-            & reg.exe import $file.FullName | Out-Null
-            $result.Add('Importato: ' + $file.Name)
-        }
-        catch {
-            $result.Add('SKIP import ' + $file.Name + ': ' + $_.Exception.Message)
-        }
-    }
-
-    Write-TedeLog ('Ripristino eseguito da ' + $latest.FullName)
-    return $result
-}
-
 function Open-TedePath {
     param([string]$Path)
     try {
@@ -230,139 +223,117 @@ function Open-TedePath {
     catch { }
 }
 
-function Apply-ServicesBase {
-    $applied = @()
-    $services = @(
-        'SysMain',
-        'WSearch',
-        'DiagTrack',
-        'dmwappushservice',
-        'MapsBroker',
-        'Fax',
-        'RemoteRegistry',
-        'WMPNetworkSvc',
-        'RetailDemo',
-        'WerSvc',
-        'BthAvctpSvc',
-        'DusmSvc',
-        'TrkWks',
-        'WbioSrvc',
-        'AJRouter',
-        'XblAuthManager',
-        'XblGameSave',
-        'XboxGipSvc',
-        'XboxNetApiSvc'
-    )
+# =========================================================
+# DETECTION / INFO
+# =========================================================
 
-    foreach ($service in $services) {
-        $applied += Disable-ServiceSafe -Name $service
-    }
-
-    $applied += Disable-ScheduledTaskSafe -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'Microsoft Compatibility Appraiser'
-    $applied += Disable-ScheduledTaskSafe -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'Consolidator'
-    $applied += Disable-ScheduledTaskSafe -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'UsbCeip'
-
-    return $applied
-}
-
-function Apply-MemoryLite {
-    $applied = @()
-
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'DisablePagingExecutive' -Value 1
-    $applied += 'DisablePagingExecutive = 1'
-
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'LargeSystemCache' -Value 0
-    $applied += 'LargeSystemCache = 0'
-
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'ClearPageFileAtShutdown' -Value 0
-    $applied += 'ClearPageFileAtShutdown = 0'
-
-    return $applied
-}
-
-function Apply-MemoryAggressive {
-    $applied = @()
-    $applied += Apply-MemoryLite
-
+function Get-GpuVendor {
     try {
-        Disable-MMAgent -mc -ErrorAction Stop | Out-Null
-        $applied += 'MemoryCompression disabilitata'
+        $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name } | Select-Object -First 1
+        if ($null -eq $gpu) { return 'Unknown' }
+        $name = [string]$gpu.Name
+        if ($name -match 'AMD|Radeon') { return 'AMD' }
+        if ($name -match 'NVIDIA|GeForce') { return 'NVIDIA' }
+        if ($name -match 'Intel') { return 'Intel' }
+        return $name
     }
     catch {
-        try {
-            Disable-MMAgent -MemoryCompression -ErrorAction Stop | Out-Null
-            $applied += 'MemoryCompression disabilitata'
-        }
-        catch {
-            $applied += 'SKIP MemoryCompression: ' + $_.Exception.Message
-        }
+        return 'Unknown'
     }
-
-    return $applied
 }
 
-function Remove-AppxPackageSafe {
-    param(
-        [string]$PackagePattern,
-        [bool]$RemoveForUsers = $true,
-        [bool]$RemoveProvisioned = $true
+function Get-TedeHardwareProfile {
+    $cpu = 'Unknown CPU'
+    $ram = 'Unknown RAM'
+    $gpu = 'Unknown GPU'
+
+    try {
+        $cpuObj = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cpuObj) { $cpu = $cpuObj.Name.Trim() }
+    } catch { }
+
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs -and $cs.TotalPhysicalMemory) {
+            $ramGb = [Math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
+            $ram = $ramGb.ToString() + ' GB'
+        }
+    } catch { }
+
+    try {
+        $gpuObj = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name } | Select-Object -First 1
+        if ($gpuObj) { $gpu = $gpuObj.Name.Trim() }
+    } catch { }
+
+    return @(
+        'CPU: ' + $cpu,
+        'RAM: ' + $ram,
+        'GPU: ' + $gpu
     )
-    $result = @()
-
-    if ($RemoveForUsers) {
-        try {
-            $packages = Get-AppxPackage -AllUsers -Name $PackagePattern -ErrorAction SilentlyContinue
-            if ($packages) {
-                foreach ($pkg in $packages) {
-                    try {
-                        Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-                        $result += 'App rimossa utenti: ' + $pkg.Name
-                    }
-                    catch {
-                        $result += 'SKIP remove utenti: ' + $pkg.Name
-                    }
-                }
-            }
-            else {
-                $result += 'SKIP app utenti non trovata: ' + $PackagePattern
-            }
-        }
-        catch {
-            $result += 'SKIP query utenti: ' + $PackagePattern
-        }
-    }
-    else {
-        $result += 'SKIP utenti per scelta: ' + $PackagePattern
-    }
-
-    if ($RemoveProvisioned) {
-        try {
-            $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $PackagePattern }
-            if ($prov) {
-                foreach ($pkg in $prov) {
-                    try {
-                        Remove-AppxProvisionedPackage -Online -PackageName $pkg.PackageName -ErrorAction SilentlyContinue | Out-Null
-                        $result += 'Provisioned rimossa: ' + $pkg.DisplayName
-                    }
-                    catch {
-                        $result += 'SKIP provisioned: ' + $pkg.DisplayName
-                    }
-                }
-            }
-            else {
-                $result += 'SKIP provisioned non trovata: ' + $PackagePattern
-            }
-        }
-        catch {
-            $result += 'SKIP query provisioned: ' + $PackagePattern
-        }
-    }
-    else {
-        $result += 'SKIP provisioning per scelta: ' + $PackagePattern
-    }
-
-    return $result
 }
+
+function Get-ActiveTedeAdapter {
+    param([string]$Mode)
+
+    try {
+        if ($Mode -eq 'Wi-Fi') {
+            return Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+                $_.Status -eq 'Up' -and $_.InterfaceDescription -match 'Wi-?Fi|Wireless|WLAN|802.11'
+            } | Select-Object -First 1
+        }
+
+        return Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+            $_.Status -eq 'Up' -and $_.HardwareInterface -eq $true -and $_.InterfaceDescription -notmatch 'Wi-?Fi|Wireless|WLAN|802.11'
+        } | Select-Object -First 1
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-TedeRiskLevel {
+    param(
+        [bool]$HasAggressive,
+        [bool]$HasBCD,
+        [bool]$HasMSI,
+        [bool]$HasSecurity,
+        [bool]$HasExtremeDebloat
+    )
+
+    $score = 0
+    if ($HasAggressive) { $score += 1 }
+    if ($HasBCD) { $score += 2 }
+    if ($HasMSI) { $score += 2 }
+    if ($HasSecurity) { $score += 2 }
+    if ($HasExtremeDebloat) { $score += 2 }
+
+    if ($score -ge 6) { return 'ALTO' }
+    if ($score -ge 3) { return 'MEDIO' }
+    return 'BASSO'
+}
+
+function Confirm-TedeSensitiveSelection {
+    param(
+        [string]$RiskText,
+        [string[]]$Warnings
+    )
+
+    if ($RiskText -eq 'BASSO') { return $true }
+
+    $msg = @()
+    $msg += 'Hai selezionato tweak con rischio ' + $RiskText + '.'
+    $msg += ''
+    foreach ($w in $Warnings) { $msg += '- ' + $w }
+    $msg += ''
+    $msg += 'Continuare?'
+
+    $res = [System.Windows.MessageBox]::Show(($msg -join [Environment]::NewLine), 'Conferma tweak sensibili', 'YesNo', 'Warning')
+    return ($res -eq 'Yes')
+}
+
+# =========================================================
+# DEBLOAT
+# =========================================================
 
 function Get-DebloatMap {
     $map = [ordered]@{}
@@ -397,6 +368,64 @@ function Get-DebloatMap {
     return $map
 }
 
+function Remove-AppxPackageSafe {
+    param(
+        [string]$PackagePattern,
+        [bool]$RemoveForUsers = $true,
+        [bool]$RemoveProvisioned = $true
+    )
+
+    $result = @()
+
+    if ($RemoveForUsers) {
+        try {
+            $packages = Get-AppxPackage -AllUsers -Name $PackagePattern -ErrorAction SilentlyContinue
+            if ($packages) {
+                foreach ($pkg in $packages) {
+                    try {
+                        Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                        $result += 'App rimossa utenti: ' + $pkg.Name
+                    }
+                    catch {
+                        $result += 'SKIP remove utenti: ' + $pkg.Name
+                    }
+                }
+            }
+            else {
+                $result += 'SKIP app utenti non trovata: ' + $PackagePattern
+            }
+        }
+        catch {
+            $result += 'SKIP query utenti: ' + $PackagePattern
+        }
+    }
+
+    if ($RemoveProvisioned) {
+        try {
+            $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $PackagePattern }
+            if ($prov) {
+                foreach ($pkg in $prov) {
+                    try {
+                        Remove-AppxProvisionedPackage -Online -PackageName $pkg.PackageName -ErrorAction SilentlyContinue | Out-Null
+                        $result += 'Provisioned rimossa: ' + $pkg.DisplayName
+                    }
+                    catch {
+                        $result += 'SKIP provisioned: ' + $pkg.DisplayName
+                    }
+                }
+            }
+            else {
+                $result += 'SKIP provisioned non trovata: ' + $PackagePattern
+            }
+        }
+        catch {
+            $result += 'SKIP query provisioned: ' + $PackagePattern
+        }
+    }
+
+    return $result
+}
+
 function Apply-DebloatSelection {
     param(
         [string[]]$Items,
@@ -405,6 +434,7 @@ function Apply-DebloatSelection {
     )
 
     $applied = @()
+
     Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableWindowsConsumerFeatures' -Value 1
     $applied += 'DisableWindowsConsumerFeatures = 1'
 
@@ -486,6 +516,81 @@ function Apply-DebloatAggressive {
         'Mail and Calendar'
     )
     return Apply-DebloatSelection -Items $aggressiveItems -RemoveForUsers $true -RemoveProvisioned $true
+}
+
+# =========================================================
+# TWEAK MODULES
+# =========================================================
+
+function Apply-ServicesBase {
+    $applied = @()
+    $services = @(
+        'SysMain',
+        'WSearch',
+        'DiagTrack',
+        'dmwappushservice',
+        'MapsBroker',
+        'Fax',
+        'RemoteRegistry',
+        'WMPNetworkSvc',
+        'RetailDemo',
+        'WerSvc',
+        'BthAvctpSvc',
+        'DusmSvc',
+        'TrkWks',
+        'WbioSrvc',
+        'AJRouter',
+        'XblAuthManager',
+        'XblGameSave',
+        'XboxGipSvc',
+        'XboxNetApiSvc'
+    )
+
+    foreach ($service in $services) {
+        $applied += Disable-ServiceSafe -Name $service
+    }
+
+    $applied += Disable-ScheduledTaskSafe -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'Microsoft Compatibility Appraiser'
+    $applied += Disable-ScheduledTaskSafe -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'Consolidator'
+    $applied += Disable-ScheduledTaskSafe -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'UsbCeip'
+
+    return $applied
+}
+
+function Apply-MemoryLite {
+    $applied = @()
+
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'DisablePagingExecutive' -Value 1
+    $applied += 'DisablePagingExecutive = 1'
+
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'LargeSystemCache' -Value 0
+    $applied += 'LargeSystemCache = 0'
+
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'ClearPageFileAtShutdown' -Value 0
+    $applied += 'ClearPageFileAtShutdown = 0'
+
+    return $applied
+}
+
+function Apply-MemoryAggressive {
+    $applied = @()
+    $applied += Apply-MemoryLite
+
+    try {
+        Disable-MMAgent -mc -ErrorAction Stop | Out-Null
+        $applied += 'MemoryCompression disabilitata'
+    }
+    catch {
+        try {
+            Disable-MMAgent -MemoryCompression -ErrorAction Stop | Out-Null
+            $applied += 'MemoryCompression disabilitata'
+        }
+        catch {
+            $applied += 'SKIP MemoryCompression: ' + $_.Exception.Message
+        }
+    }
+
+    return $applied
 }
 
 function Apply-InputTweaks {
@@ -612,6 +717,7 @@ function Apply-SchedulerMMCSS {
     if (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile')) {
         New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force | Out-Null
     }
+
     New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -PropertyType DWord -Value 0xFFFFFFFF -Force | Out-Null
     $applied += 'NetworkThrottlingIndex = 0xffffffff'
 
@@ -651,15 +757,7 @@ function Apply-BackgroundCleanupSafe {
     Set-RegDword -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications' -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -Value 0
     $applied += 'NOC_GLOBAL_SETTING_TOASTS_ENABLED = 0'
 
-    $processes = @(
-        'Widgets',
-        'WidgetService',
-        'GameBar',
-        'GameBarFTServer',
-        'XboxPcAppFT'
-    )
-
-    foreach ($name in $processes) {
+    foreach ($name in @('Widgets','WidgetService','GameBar','GameBarFTServer','XboxPcAppFT')) {
         $applied += Stop-ProcessSafe -Name $name
     }
 
@@ -702,26 +800,14 @@ function Apply-GamingCommon {
     return $applied
 }
 
-function Clear-DirectoryContentSafe {
-    param([string]$Path)
-    try {
-        if (Test-Path $Path) {
-            Get-ChildItem -Path $Path -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-            return 'Pulita cartella: ' + $Path
-        }
-        return 'SKIP cartella non trovata: ' + $Path
-    }
-    catch {
-        return 'SKIP pulizia ' + $Path + ': ' + $_.Exception.Message
-    }
-}
-
 function Apply-StorageAdvanced {
     $applied = @()
 
     try { fsutil behavior set DisableDeleteNotify 0 | Out-Null; $applied += 'DisableDeleteNotify = 0' } catch { $applied += 'SKIP DisableDeleteNotify' }
+
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'NtfsDisableLastAccessUpdate' -Value 1
     $applied += 'NtfsDisableLastAccessUpdate = 1'
+
     Set-RegString -Path 'HKLM:\SOFTWARE\Microsoft\Dfrg\BootOptimizeFunction' -Name 'Enable' -Value 'Y'
     $applied += 'BootOptimizeFunction Enable = Y'
 
@@ -772,7 +858,7 @@ function Apply-CacheCleanup {
 
 function Apply-ProcessCleanupSafePro {
     $applied = @()
-    $targets = @(
+    foreach ($proc in @(
         'Widgets',
         'WidgetService',
         'GameBar',
@@ -782,12 +868,9 @@ function Apply-ProcessCleanupSafePro {
         'MicrosoftEdgeWebView2',
         'TextInputHost',
         'LockApp'
-    )
-
-    foreach ($proc in $targets) {
+    )) {
         $applied += Stop-ProcessSafe -Name $proc
     }
-
     return $applied
 }
 
@@ -828,21 +911,19 @@ function Apply-NetworkAdapterMode {
     try {
         if ($Mode -eq 'Wi-Fi') {
             $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -match 'Wi-?Fi|Wireless|WLAN|802.11' } | Select-Object -First 1
-            if ($null -eq $adapter) {
-                return @('SKIP nessun Wi-Fi attivo')
-            }
+            if ($null -eq $adapter) { return @('SKIP nessun Wi-Fi attivo') }
 
             netsh interface ip set dns name="$($adapter.Name)" static 1.1.1.1 primary | Out-Null
             netsh interface ip add dns name="$($adapter.Name)" 1.0.0.1 index=2 | Out-Null
             $applied += 'DNS Cloudflare su Wi-Fi: ' + $adapter.Name
 
             try { Set-NetAdapterPowerManagement -Name $adapter.Name -AllowComputerToTurnOffDevice Disabled -ErrorAction SilentlyContinue; $applied += 'Power management off: ' + $adapter.Name } catch { $applied += 'SKIP power management Wi-Fi' }
-            $pairs = @(
+
+            foreach ($pair in @(
                 @('Preferred Band','Prefer 5GHz Band'),
                 @('Transmit Power','Highest'),
                 @('Roaming Aggressiveness','1. Lowest')
-            )
-            foreach ($pair in $pairs) {
+            )) {
                 try {
                     Set-NetAdapterAdvancedProperty -Name $adapter.Name -DisplayName $pair[0] -DisplayValue $pair[1] -NoRestart -ErrorAction SilentlyContinue
                     $applied += $pair[0] + ' = ' + $pair[1]
@@ -854,17 +935,15 @@ function Apply-NetworkAdapterMode {
         }
         else {
             $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.HardwareInterface -eq $true -and $_.InterfaceDescription -notmatch 'Wi-?Fi|Wireless|WLAN|802.11' } | Select-Object -First 1
-            if ($null -eq $adapter) {
-                return @('SKIP nessuna LAN attiva')
-            }
+            if ($null -eq $adapter) { return @('SKIP nessuna LAN attiva') }
 
             netsh interface ip set dns name="$($adapter.Name)" static 1.1.1.1 primary | Out-Null
             netsh interface ip add dns name="$($adapter.Name)" 1.0.0.1 index=2 | Out-Null
             $applied += 'DNS Cloudflare su LAN: ' + $adapter.Name
 
             try { Set-NetAdapterPowerManagement -Name $adapter.Name -AllowComputerToTurnOffDevice Disabled -ErrorAction SilentlyContinue; $applied += 'Power management off: ' + $adapter.Name } catch { $applied += 'SKIP power management LAN' }
-            $props = @('Interrupt Moderation','Energy-Efficient Ethernet','Green Ethernet','Flow Control')
-            foreach ($prop in $props) {
+
+            foreach ($prop in @('Interrupt Moderation','Energy-Efficient Ethernet','Green Ethernet','Flow Control')) {
                 try {
                     Set-NetAdapterAdvancedProperty -Name $adapter.Name -DisplayName $prop -DisplayValue 'Disabled' -NoRestart -ErrorAction SilentlyContinue
                     $applied += $prop + ' = Disabled'
@@ -908,38 +987,11 @@ function Apply-BCDTimerTweaks {
     return $applied
 }
 
-function Get-GpuVendor {
-    try {
-        $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name } | Select-Object -First 1
-        if ($null -eq $gpu) { return 'Unknown' }
-        $name = [string]$gpu.Name
-        if ($name -match 'AMD|Radeon') { return 'AMD' }
-        if ($name -match 'NVIDIA|GeForce') { return 'NVIDIA' }
-        if ($name -match 'Intel') { return 'Intel' }
-        return $name
-    }
-    catch {
-        return 'Unknown'
-    }
-}
-
-function Get-ActiveTedeAdapter {
-    param([string]$Mode)
-    try {
-        if ($Mode -eq 'Wi-Fi') {
-            return Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -match 'Wi-?Fi|Wireless|WLAN|802.11' } | Select-Object -First 1
-        }
-        return Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.HardwareInterface -eq $true -and $_.InterfaceDescription -notmatch 'Wi-?Fi|Wireless|WLAN|802.11' } | Select-Object -First 1
-    }
-    catch {
-        return $null
-    }
-}
-
 function Apply-GpuVendorSpecific {
     $applied = @()
     $vendor = Get-GpuVendor
     $applied += 'GPU vendor rilevato: ' + $vendor
+
     switch ($vendor) {
         'AMD' {
             foreach ($proc in @('RadeonSoftware','AMDRSServ')) { $applied += Stop-ProcessSafe -Name $proc }
@@ -953,39 +1005,76 @@ function Apply-GpuVendorSpecific {
             foreach ($proc in @('IntelGraphicsSoftware','igfxCUIService')) { $applied += Stop-ProcessSafe -Name $proc }
             $applied += 'Profilo Intel helper applicato'
         }
-        default { $applied += 'SKIP vendor-specific: GPU non riconosciuta' }
+        default {
+            $applied += 'SKIP vendor-specific: GPU non riconosciuta'
+        }
     }
+
     return $applied
 }
 
 function Apply-GameExeGeneric {
     param([string]$ExePath)
-    if ([string]::IsNullOrWhiteSpace($ExePath)) { return @('SKIP game exe generic: percorso non inserito') }
-    if (-not (Test-Path $ExePath)) { return @('SKIP game exe generic: file non trovato -> ' + $ExePath) }
+
+    if ([string]::IsNullOrWhiteSpace($ExePath)) {
+        return @('SKIP game exe generic: percorso non inserito')
+    }
+    if (-not (Test-Path $ExePath)) {
+        return @('SKIP game exe generic: file non trovato -> ' + $ExePath)
+    }
+
     Set-RegString -Path 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers' -Name $ExePath -Value '~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE'
-    return @('AppCompat Flags impostati per: ' + $ExePath, 'Disable Fullscreen Optimizations + High DPI override applicati')
+    return @(
+        'AppCompat Flags impostati per: ' + $ExePath,
+        'Disable Fullscreen Optimizations + High DPI override applicati'
+    )
 }
 
 function Apply-NicAdvancedTuning {
     param([string]$Mode)
+
     $applied = @()
     $adapter = Get-ActiveTedeAdapter -Mode $Mode
     if ($null -eq $adapter) { return @('SKIP NIC advanced: nessun adapter ' + $Mode + ' attivo') }
+
     $applied += 'NIC advanced su: ' + $adapter.Name
-    foreach ($prop in @('Interrupt Moderation','Flow Control','Energy-Efficient Ethernet','Green Ethernet','Jumbo Packet','Large Send Offload v2 (IPv4)','Large Send Offload v2 (IPv6)','IPv4 Checksum Offload','TCP Checksum Offload (IPv4)','TCP Checksum Offload (IPv6)','UDP Checksum Offload (IPv4)','UDP Checksum Offload (IPv6)')) {
+
+    foreach ($prop in @(
+        'Interrupt Moderation',
+        'Flow Control',
+        'Energy-Efficient Ethernet',
+        'Green Ethernet',
+        'Jumbo Packet',
+        'Large Send Offload v2 (IPv4)',
+        'Large Send Offload v2 (IPv6)',
+        'IPv4 Checksum Offload',
+        'TCP Checksum Offload (IPv4)',
+        'TCP Checksum Offload (IPv6)',
+        'UDP Checksum Offload (IPv4)',
+        'UDP Checksum Offload (IPv6)'
+    )) {
         try {
             Set-NetAdapterAdvancedProperty -Name $adapter.Name -DisplayName $prop -DisplayValue 'Disabled' -NoRestart -ErrorAction SilentlyContinue
             $applied += $prop + ' = Disabled'
         }
-        catch { $applied += 'SKIP ' + $prop }
+        catch {
+            $applied += 'SKIP ' + $prop
+        }
     }
-    foreach ($pair in @(@('Receive Buffers','2048'), @('Transmit Buffers','1024'))) {
+
+    foreach ($pair in @(
+        @('Receive Buffers','2048'),
+        @('Transmit Buffers','1024')
+    )) {
         try {
             Set-NetAdapterAdvancedProperty -Name $adapter.Name -DisplayName $pair[0] -DisplayValue $pair[1] -NoRestart -ErrorAction SilentlyContinue
             $applied += $pair[0] + ' = ' + $pair[1]
         }
-        catch { $applied += 'SKIP ' + $pair[0] }
+        catch {
+            $applied += 'SKIP ' + $pair[0]
+        }
     }
+
     return $applied
 }
 
@@ -999,13 +1088,18 @@ function Apply-OverlayKiller {
 
 function Apply-SecurityOptionalProfile {
     $applied = @()
+
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' -Name 'EnableVirtualizationBasedSecurity' -Value 0
     $applied += 'EnableVirtualizationBasedSecurity = 0'
+
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -Name 'Enabled' -Value 0
     $applied += 'HVCI Enabled = 0'
+
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LsaCfgFlags' -Value 0
     $applied += 'LsaCfgFlags = 0'
+
     try { bcdedit /set hypervisorlaunchtype off | Out-Null; $applied += 'hypervisorlaunchtype = off' } catch { $applied += 'SKIP hypervisorlaunchtype' }
+
     return $applied
 }
 
@@ -1013,6 +1107,7 @@ function Apply-VendorCleanup {
     $applied = @()
     $vendor = Get-GpuVendor
     $applied += 'Vendor cleanup su: ' + $vendor
+
     switch ($vendor) {
         'AMD' {
             foreach ($proc in @('AMDRSServ','RadeonSoftware')) { $applied += Stop-ProcessSafe -Name $proc }
@@ -1024,34 +1119,74 @@ function Apply-VendorCleanup {
         'Intel' {
             foreach ($proc in @('IntelGraphicsSoftware')) { $applied += Stop-ProcessSafe -Name $proc }
         }
-        default { $applied += 'SKIP vendor cleanup: GPU non riconosciuta' }
+        default {
+            $applied += 'SKIP vendor cleanup: GPU non riconosciuta'
+        }
     }
+
     return $applied
 }
 
 function New-TedeValidationReport {
     Initialize-TedeWorkspace
+
     $reportRoot = Join-Path $script:TedeDataRoot 'Reports'
-    if (-not (Test-Path $reportRoot)) { New-Item -Path $reportRoot -ItemType Directory -Force | Out-Null }
+    if (-not (Test-Path $reportRoot)) {
+        New-Item -Path $reportRoot -ItemType Directory -Force | Out-Null
+    }
+
     $file = Join-Path $reportRoot ('validation_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.txt')
+
     $lines = @()
     $lines += 'TedeTweak Validation Report'
-    $lines += ('Date: ' + (Get-Date))
-    $lines += (Get-TedeHardwareProfile)
-    $lines += ('GPU Vendor: ' + (Get-GpuVendor))
+    $lines += 'Date: ' + (Get-Date)
     $lines += ''
-    try { $lines += 'Active power scheme:'; $lines += (powercfg /getactivescheme | Out-String).Trim() } catch { $lines += 'SKIP power scheme' }
+    $lines += 'Hardware profile:'
+    $lines += Get-TedeHardwareProfile
+    $lines += 'GPU Vendor: ' + (Get-GpuVendor)
     $lines += ''
-    try { $lines += 'BCD excerpt:'; $lines += (bcdedit /enum | Out-String).Trim() } catch { $lines += 'SKIP bcdedit' }
+
+    try {
+        $lines += 'Active power scheme:'
+        $lines += (powercfg /getactivescheme | Out-String).Trim()
+    }
+    catch {
+        $lines += 'SKIP power scheme'
+    }
+
     $lines += ''
-    try { $lines += 'Adapters up:'; $lines += (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Format-Table Name, InterfaceDescription, Status -AutoSize | Out-String).Trim() } catch { $lines += 'SKIP netadapter' }
+
+    try {
+        $lines += 'BCD excerpt:'
+        $lines += (bcdedit /enum | Out-String).Trim()
+    }
+    catch {
+        $lines += 'SKIP bcdedit'
+    }
+
+    $lines += ''
+
+    try {
+        $lines += 'Adapters up:'
+        $lines += (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Format-Table Name, InterfaceDescription, Status -AutoSize | Out-String).Trim()
+    }
+    catch {
+        $lines += 'SKIP netadapter'
+    }
+
     Set-Content -Path $file -Value $lines -Encoding UTF8
     return 'Validation report salvato: ' + $file
 }
 
 function Apply-FortniteSpecific {
     $applied = @()
-    $roots = @('C:\Program Files\Epic Games', 'C:\Program Files (x86)\Epic Games', 'D:\Epic Games', 'E:\Epic Games')
+    $roots = @(
+        'C:\Program Files\Epic Games',
+        'C:\Program Files (x86)\Epic Games',
+        'D:\Epic Games',
+        'E:\Epic Games'
+    )
+
     $found = @()
 
     foreach ($root in $roots) {
@@ -1076,130 +1211,44 @@ function Apply-FortniteSpecific {
     return $applied
 }
 
+# =========================================================
+# GUI
+# =========================================================
+
 Ensure-RunAsAdmin
+Initialize-TedeWorkspace
 
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="One Piece Performance Panel"
-        Height="770"
-        Width="1080"
+        Title="TedeTweak Gear Panel"
+        Height="840"
+        Width="1140"
         WindowStartupLocation="CenterScreen"
         Background="#08131E"
         Foreground="#F8E7B6">
-    <Window.Resources>
-        <Style TargetType="Button">
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#FFF1CC"/>
-            <Setter Property="Background" Value="#2B1C13"/>
-            <Setter Property="BorderBrush" Value="#8A6735"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="14,8"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Chrome"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="12"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#E2B867"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Chrome" Property="Background" Value="#4A2E1B"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Chrome" Property="Opacity" Value="0.55"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#A93428"/>
-            <Setter Property="BorderBrush" Value="#E0B15C"/>
-            <Setter Property="Foreground" Value="#FFF6E2"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="16,10"/>
-        </Style>
-        <Style x:Key="PanelCard" TargetType="Border">
-            <Setter Property="Background" Value="#21160F"/>
-            <Setter Property="BorderBrush" Value="#8A6735"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="Padding" Value="12"/>
-            <Setter Property="Margin" Value="0,0,0,12"/>
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <DropShadowEffect BlurRadius="18" ShadowDepth="0" Color="#000000" Opacity="0.30"/>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="TabItem">
-            <Setter Property="Foreground" Value="#F7E7C1"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
-        </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#F7E7C1"/>
-            <Setter Property="Margin" Value="0,0,0,5"/>
-        </Style>
-        <Style TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#F7E7C1"/>
-            <Setter Property="Margin" Value="0,0,0,8"/>
-        </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="Foreground" Value="#FFF1CC"/>
-            <Setter Property="Background" Value="#2B1C13"/>
-            <Setter Property="BorderBrush" Value="#8A6735"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,5"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Foreground" Value="#FFF1CC"/>
-            <Setter Property="Background" Value="#2B1C13"/>
-            <Setter Property="BorderBrush" Value="#8A6735"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,5"/>
-        </Style>
-    </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="236"/>
+            <ColumnDefinition Width="220"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0" Background="#14100C" BorderBrush="#8A6735" BorderThickness="0,0,1,0">
             <StackPanel Margin="14">
-                <TextBlock Text="☠ One Piece"
+                <TextBlock Text="☠ TedeTweak"
                            FontSize="24"
                            FontWeight="Bold"
                            Foreground="#F4D28C"
                            Margin="0,0,0,4"/>
-                <TextBlock Text="Performance Panel"
+                <TextBlock Text="Gear Panel"
                            FontSize="21"
                            FontWeight="Bold"
                            Foreground="#FFF1CC"
                            Margin="0,0,0,18"/>
 
-                <Button Name="BtnNavPreset" Content="Crew Routes" Height="48" Margin="0,0,0,10" Background="#4B2D18" Foreground="#F7E7C1" BorderBrush="#D6A84F"/>
-                <Button Name="BtnNavTweaks" Content="Ship Systems" Height="48" Margin="0,0,0,10" Background="#1E150F" Foreground="#F7E7C1" BorderBrush="#7C5D2F"/>
-                <Button Name="BtnNavInfo" Content="Captain Log" Height="48" Margin="0,0,0,10" Background="#1E150F" Foreground="#F7E7C1" BorderBrush="#7C5D2F"/>
-
-                <Border Margin="0,18,0,0" Padding="12" CornerRadius="14" Background="#1B1410" BorderBrush="#6F542B" BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="Private Build" FontSize="11" FontWeight="SemiBold" Foreground="#D6A84F"/>
-                        <TextBlock Text="Luxury captain layout for competitive tweaks and cleaner navigation." TextWrapping="Wrap" Foreground="#D9C7A0" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </Border>
+                <Button Name="BtnNavPreset" Content="Crew Routes" Height="44" Margin="0,0,0,10" Background="#3A2416" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
+                <Button Name="BtnNavTweaks" Content="Ship Systems" Height="44" Margin="0,0,0,10" Background="#20150E" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
+                <Button Name="BtnNavInfo" Content="Captain Log" Height="44" Margin="0,0,0,10" Background="#20150E" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
             </StackPanel>
         </Border>
 
@@ -1210,31 +1259,24 @@ Ensure-RunAsAdmin
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" Margin="0,0,0,12" Padding="18" CornerRadius="20" BorderBrush="#A77B32" BorderThickness="1">
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#24170F" Offset="0"/>
-                        <GradientStop Color="#101922" Offset="0.68"/>
-                        <GradientStop Color="#1A1010" Offset="1"/>
-                    </LinearGradientBrush>
-                </Border.Background>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="GRAND LINE EDITION" FontSize="12" FontWeight="SemiBold" Foreground="#D6A84F"/>
-                        <TextBlock Text="One Piece Performance Panel" FontSize="30" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,2,0,0"/>
-                        <TextBlock Name="TxtModeLabel" Text="Route: EAST BLUE" FontSize="13" Margin="0,6,0,0" Foreground="#D9C7A0"/>
-                    </StackPanel>
-                    <Border Name="ModeChipBorder" Grid.Column="1" Background="#7E2D22" BorderBrush="#E0B15C" BorderThickness="1" CornerRadius="16" Padding="16,8" VerticalAlignment="Center">
-                        <TextBlock Name="TxtModeChip" Text="EAST BLUE" FontWeight="SemiBold" Foreground="#FFF4DA"/>
-                    </Border>
-                </Grid>
-            </Border>
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <TabControl Name="MainTab" Grid.Row="1" Background="#14100C" BorderBrush="#8A6735" Margin="0,2,0,0">
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="TedeTweak Gear Panel" FontSize="28" FontWeight="Bold" Foreground="#FFF1CC"/>
+                    <TextBlock Name="TxtModeLabel" Text="Route: GEAR 2" FontSize="13" Margin="0,4,0,0" Foreground="#D9C7A0"/>
+                </StackPanel>
+
+                <Border Name="ModeChipBorder" Grid.Column="1" Background="#8C4C22" BorderBrush="#D6A84F" BorderThickness="1" CornerRadius="14" Padding="14,7" VerticalAlignment="Center">
+                    <TextBlock Name="TxtModeChip" Text="GEAR 2" FontWeight="SemiBold" Foreground="#FFF4DA"/>
+                </Border>
+            </Grid>
+
+            <TabControl Name="MainTab" Grid.Row="1" Background="#14100C" BorderBrush="#8A6735">
+
                 <TabItem Header="Crew Routes">
                     <Grid Background="#14100C" Margin="8">
                         <Grid.ColumnDefinitions>
@@ -1243,16 +1285,18 @@ Ensure-RunAsAdmin
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Crew Route" FontSize="15" FontWeight="Bold" Foreground="#F4D28C" Margin="0,0,0,8"/>
-                                    <RadioButton Name="RbSafe" Content="East Blue (Consigliato)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
-                                    <RadioButton Name="RbInsane" Content="Yonko Mode (Tryhard)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
-                                    <RadioButton Name="RbCustom" Content="Grand Line Custom (manuale)" Margin="0,0,0,0" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbGear2" Content="Gear 2 (Recommended / Safe Comp)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbGear4" Content="Gear 4 (Hard Comp)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbGear5" Content="Gear 5 (Max Mode)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbGearCustom" Content="Gear Custom (Manuale)" Margin="0,0,0,0" Foreground="#F7E7C1"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Configurazione hardware" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
                                     <TextBlock Text="Rete" Foreground="#F7E7C1" Margin="0,0,0,4"/>
@@ -1273,18 +1317,59 @@ Ensure-RunAsAdmin
                                     </ComboBox>
                                 </StackPanel>
                             </Border>
+
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="Quick tools" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
+                                    <Button Name="BtnCreateBackup" Content="Create safety backup" Height="34" Margin="0,0,0,8" Background="#4A2E1B" Foreground="#FFF1CC" BorderBrush="#9A7A49"/>
+                                    <Button Name="BtnOpenData" Content="Open TedeTweakData" Height="34" Background="#4A2E1B" Foreground="#FFF1CC" BorderBrush="#9A7A49"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
                         <Border Grid.Column="1" Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="14">
                             <StackPanel>
                                 <TextBlock Text="Crew Route Description" FontSize="16" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
-                                <TextBlock Name="TxtPresetDescription" Text="East Blue: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,12"/>
-                                <TextBlock Text="EAST BLUE" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                <TextBlock Text="- servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, background cleanup safe e gaming common." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,6"/>
-                                <TextBlock Text="YONKO MODE" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
-                                <TextBlock Text="- aggiunge debloat aggressive, power advanced, scheduler, input, USB, memory aggressive e Fortnite specific." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,6"/>
-                                <TextBlock Text="GRAND LINE CUSTOM" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
-                                <TextBlock Text="- usa solo le checkbox selezionate nel tab Tweaks, incluso debloat extreme custom." TextWrapping="Wrap" Foreground="#F7E7C1"/>
+                                <TextBlock Name="TxtPresetDescription"
+                                           Text="Gear 2: preset safe competitivo con servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup safe, gaming common e chiusura leggera dei processi inutili."
+                                           TextWrapping="Wrap"
+                                           Foreground="#F7E7C1"
+                                           Margin="0,0,0,12"/>
+
+                                <TextBlock Text="GEAR 2" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                <TextBlock Text="- base consigliata: safe comp, pulita, stabile e veloce."
+                                           TextWrapping="Wrap"
+                                           Foreground="#F7E7C1"
+                                           Margin="0,0,0,6"/>
+
+                                <TextBlock Text="GEAR 4" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
+                                <TextBlock Text="- hard comp: aggiunge rete, cache, NIC tuning, GPU helper, overlay killer e cleanup pro."
+                                           TextWrapping="Wrap"
+                                           Foreground="#F7E7C1"
+                                           Margin="0,0,0,6"/>
+
+                                <TextBlock Text="GEAR 5" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
+                                <TextBlock Text="- max mode: aggiunge memory aggressive, MSI, BCD, security optional, vendor cleanup e Fortnite."
+                                           TextWrapping="Wrap"
+                                           Foreground="#F7E7C1"
+                                           Margin="0,0,0,6"/>
+
+                                <TextBlock Text="GEAR CUSTOM" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
+                                <TextBlock Text="- usa solo le checkbox selezionate nel tab Tweaks."
+                                           TextWrapping="Wrap"
+                                           Foreground="#F7E7C1"
+                                           Margin="0,0,0,12"/>
+
+                                <Separator Margin="0,8,0,10" Background="#8A6735"/>
+
+                                <TextBlock Text="Hardware attuale" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,6"/>
+                                <TextBlock Name="TxtHardwareInfo" TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Livello rischio attuale" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,6"/>
+                                <TextBlock Name="TxtRiskLevel" Text="BASSO" Foreground="#9FE870" Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Warning" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,6"/>
+                                <TextBlock Name="TxtWarnings" TextWrapping="Wrap" Foreground="#F7E7C1"/>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -1293,7 +1378,8 @@ Ensure-RunAsAdmin
                 <TabItem Header="Ship Systems">
                     <ScrollViewer Background="#14100C">
                         <StackPanel Margin="8">
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Ship Services and Cargo Cleanup" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Servizi Windows e rimozione bloatware selettiva." Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1304,10 +1390,10 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Debloat extreme custom" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Seleziona manualmente i pacchetti da rimuovere. Le opzioni sotto vengono usate solo se il toggle Debloat extreme custom e attivo." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Seleziona manualmente i pacchetti da rimuovere. Le opzioni sotto vengono usate solo se il toggle Debloat extreme custom è attivo." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
 
                                     <WrapPanel Margin="0,0,0,10">
                                         <Button Name="BtnDebloatRecommended" Content="Select recommended" Width="140" Height="30" Margin="0,0,8,0" Background="#4A2E1B" Foreground="#FFF1CC" BorderBrush="#9A7A49"/>
@@ -1351,10 +1437,10 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Blocchi per input delay, reattivita e frametime piu stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Blocchi per input delay, reattività e frametime più stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
                                     <CheckBox Name="ChkPowerAdvanced" Content="Power advanced (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                     <CheckBox Name="ChkScheduler" Content="Scheduler / MMCSS (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                     <CheckBox Name="ChkInput" Content="Input tweaks (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
@@ -1362,7 +1448,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Memory" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Tweak memoria lite o aggressivi." Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1371,7 +1457,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Background cleanup" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Riduce esperienze Windows e processi non essenziali senza toccare app utente comuni." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1379,7 +1465,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="System finish" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Storage, overlay display, pulizia cache e cleanup processi Windows non essenziali." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1390,7 +1476,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Network and timer" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Tuning rete competitiva, MSI mode e timer di boot." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1401,7 +1487,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Cannons and GPU" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Vendor-specific helper tuning e tweak generici per game exe." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1412,7 +1498,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Captain Optional" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="NIC fine tuning, overlay cleanup, security profile e driver/vendor cleanup." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1424,7 +1510,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource PanelCard}" Padding="12">
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
                                 <StackPanel>
                                     <TextBlock Text="Battle Mode" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="GameDVR, Game Mode, HAGS e Fortnite." Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1432,18 +1518,21 @@ Ensure-RunAsAdmin
                                     <CheckBox Name="ChkFortnite" Content="Fortnite specific (reale)" Foreground="#F7E7C1"/>
                                 </StackPanel>
                             </Border>
+
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
                 <TabItem Header="Captain Log">
                     <Grid Background="#14100C">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
-                            <TextBlock Text="TedeTweak GUI v1.3" FontSize="18" FontWeight="Bold" Foreground="#FFF1CC" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                            <TextBlock Text="Aggiunti blocchi GPU vendor-specific, game EXE generic, NIC advanced, overlay killer, security optional, vendor cleanup e validation report per una v1.3 ancora piu completa." TextWrapping="Wrap" Foreground="#F7E7C1" HorizontalAlignment="Center" TextAlignment="Center"/>
+                        <StackPanel Margin="24">
+                            <TextBlock Text="TedeTweak Gear Panel" FontSize="18" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
+                            <TextBlock Text="Rewrite pulito con preset Gear, backup, report, debloat custom e moduli tweak separati." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,12"/>
+                            <TextBox Name="TxtOutput" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" Background="#120C08" Foreground="#F7E7C1" BorderBrush="#8A6735" MinHeight="420"/>
                         </StackPanel>
                     </Grid>
                 </TabItem>
+
             </TabControl>
 
             <Grid Grid.Row="2" Margin="0,10,0,0">
@@ -1451,9 +1540,15 @@ Ensure-RunAsAdmin
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+
                 <TextBlock Name="TxtStatus" Grid.Column="0" Text="Pronto." VerticalAlignment="Center" Foreground="#9CA3AF"/>
-                <Button Name="BtnApply" Grid.Column="1" Content="Set Sail / Apply Tweaks" Width="220" Height="42" Style="{StaticResource PrimaryActionButton}"/>
+
+                <WrapPanel Grid.Column="1">
+                    <Button Name="BtnPreview" Content="Preview summary" Width="130" Height="36" Margin="0,0,8,0" Background="#4A2E1B" Foreground="#FFF4DA" BorderBrush="#D6A84F"/>
+                    <Button Name="BtnApply" Content="Set Sail / Apply Tweaks" Width="170" Height="36" Background="#B63A2B" Foreground="#FFF4DA" BorderBrush="#D6A84F"/>
+                </WrapPanel>
             </Grid>
+
         </Grid>
     </Grid>
 </Window>
@@ -1462,272 +1557,386 @@ Ensure-RunAsAdmin
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
 
+# =========================================================
+# FIND CONTROLS
+# =========================================================
+
 $MainTab = $window.FindName('MainTab')
 $BtnNavPreset = $window.FindName('BtnNavPreset')
 $BtnNavTweaks = $window.FindName('BtnNavTweaks')
 $BtnNavInfo = $window.FindName('BtnNavInfo')
-$RbSafe = $window.FindName('RbSafe')
-$RbInsane = $window.FindName('RbInsane')
-$RbCustom = $window.FindName('RbCustom')
+
+$RbGear2 = $window.FindName('RbGear2')
+$RbGear4 = $window.FindName('RbGear4')
+$RbGear5 = $window.FindName('RbGear5')
+$RbGearCustom = $window.FindName('RbGearCustom')
+
 $TxtModeLabel = $window.FindName('TxtModeLabel')
 $TxtModeChip = $window.FindName('TxtModeChip')
 $ModeChipBorder = $window.FindName('ModeChipBorder')
 $TxtPresetDescription = $window.FindName('TxtPresetDescription')
 $TxtStatus = $window.FindName('TxtStatus')
+$TxtOutput = $window.FindName('TxtOutput')
+$TxtHardwareInfo = $window.FindName('TxtHardwareInfo')
+$TxtRiskLevel = $window.FindName('TxtRiskLevel')
+$TxtWarnings = $window.FindName('TxtWarnings')
+
 $BtnApply = $window.FindName('BtnApply')
+$BtnPreview = $window.FindName('BtnPreview')
+$BtnCreateBackup = $window.FindName('BtnCreateBackup')
+$BtnOpenData = $window.FindName('BtnOpenData')
+
+$CmbNetMode = $window.FindName('CmbNetMode')
+$TxtGameExePath = $window.FindName('TxtGameExePath')
 
 $ChkServicesBase = $window.FindName('ChkServicesBase')
 $ChkDebloatSafe = $window.FindName('ChkDebloatSafe')
 $ChkDebloatAggressive = $window.FindName('ChkDebloatAggressive')
 $ChkDebloatExtreme = $window.FindName('ChkDebloatExtreme')
+
 $ChkDebloatUsers = $window.FindName('ChkDebloatUsers')
 $ChkDebloatProvisioned = $window.FindName('ChkDebloatProvisioned')
-$ChkPowerAdvanced = $window.FindName('ChkPowerAdvanced')
-$ChkScheduler = $window.FindName('ChkScheduler')
-$ChkInput = $window.FindName('ChkInput')
-$ChkUsb = $window.FindName('ChkUsb')
-$ChkMemoryLite = $window.FindName('ChkMemoryLite')
-$ChkMemoryAggressive = $window.FindName('ChkMemoryAggressive')
-$ChkCleanupSafe = $window.FindName('ChkCleanupSafe')
-$ChkStorage = $window.FindName('ChkStorage')
-$ChkDisplay = $window.FindName('ChkDisplay')
-$ChkCache = $window.FindName('ChkCache')
-$ChkCleanupPro = $window.FindName('ChkCleanupPro')
-$ChkNetworkCommon = $window.FindName('ChkNetworkCommon')
-$ChkNetworkAdapter = $window.FindName('ChkNetworkAdapter')
-$ChkMSI = $window.FindName('ChkMSI')
-$ChkBCD = $window.FindName('ChkBCD')
-$ChkGpuVendor = $window.FindName('ChkGpuVendor')
-$ChkGameExeGeneric = $window.FindName('ChkGameExeGeneric')
-$TxtGameExePath = $window.FindName('TxtGameExePath')
-$ChkNicAdvanced = $window.FindName('ChkNicAdvanced')
-$ChkOverlayKiller = $window.FindName('ChkOverlayKiller')
-$ChkSecurityOptional = $window.FindName('ChkSecurityOptional')
-$ChkVendorCleanup = $window.FindName('ChkVendorCleanup')
-$ChkValidationReport = $window.FindName('ChkValidationReport')
-$ChkGaming = $window.FindName('ChkGaming')
-$ChkFortnite = $window.FindName('ChkFortnite')
 
 $BtnDebloatRecommended = $window.FindName('BtnDebloatRecommended')
 $BtnDebloatAll = $window.FindName('BtnDebloatAll')
 $BtnDebloatClear = $window.FindName('BtnDebloatClear')
 
-$DebloatBoxes = [ordered]@{}
-$DebloatBoxes['Clipchamp'] = $window.FindName('DbClipchamp')
-$DebloatBoxes['Bing News'] = $window.FindName('DbBingNews')
-$DebloatBoxes['Get Help'] = $window.FindName('DbGetHelp')
-$DebloatBoxes['Get Started'] = $window.FindName('DbGetStarted')
-$DebloatBoxes['Office Hub'] = $window.FindName('DbOfficeHub')
-$DebloatBoxes['Solitaire'] = $window.FindName('DbSolitaire')
-$DebloatBoxes['People'] = $window.FindName('DbPeople')
-$DebloatBoxes['Skype'] = $window.FindName('DbSkype')
-$DebloatBoxes['Teams Consumer'] = $window.FindName('DbTeams')
-$DebloatBoxes['Xbox TCUI'] = $window.FindName('DbXboxTCUI')
-$DebloatBoxes['Xbox App'] = $window.FindName('DbXboxApp')
-$DebloatBoxes['Xbox Game Overlay'] = $window.FindName('DbXboxGameOverlay')
-$DebloatBoxes['Xbox Gaming Overlay'] = $window.FindName('DbXboxGamingOverlay')
-$DebloatBoxes['Xbox Identity Provider'] = $window.FindName('DbXboxIdentity')
-$DebloatBoxes['Xbox Speech To Text'] = $window.FindName('DbXboxSpeech')
-$DebloatBoxes['Phone Link'] = $window.FindName('DbPhoneLink')
-$DebloatBoxes['Groove Music'] = $window.FindName('DbGroove')
-$DebloatBoxes['Movies and TV'] = $window.FindName('DbMovies')
-$DebloatBoxes['To Do'] = $window.FindName('DbTodo')
-$DebloatBoxes['Family'] = $window.FindName('DbFamily')
-$DebloatBoxes['Quick Assist'] = $window.FindName('DbQuickAssist')
-$DebloatBoxes['Dev Home'] = $window.FindName('DbDevHome')
-$DebloatBoxes['Feedback Hub'] = $window.FindName('DbFeedbackHub')
-$DebloatBoxes['Maps'] = $window.FindName('DbMaps')
-$DebloatBoxes['Camera'] = $window.FindName('DbCamera')
-$DebloatBoxes['Sound Recorder'] = $window.FindName('DbSoundRecorder')
-$DebloatBoxes['Alarms'] = $window.FindName('DbAlarms')
-$DebloatBoxes['Mail and Calendar'] = $window.FindName('DbMailCalendar')
+$ChkPowerAdvanced = $window.FindName('ChkPowerAdvanced')
+$ChkScheduler = $window.FindName('ChkScheduler')
+$ChkInput = $window.FindName('ChkInput')
+$ChkUsb = $window.FindName('ChkUsb')
+
+$ChkMemoryLite = $window.FindName('ChkMemoryLite')
+$ChkMemoryAggressive = $window.FindName('ChkMemoryAggressive')
+
+$ChkCleanupSafe = $window.FindName('ChkCleanupSafe')
+
+$ChkStorage = $window.FindName('ChkStorage')
+$ChkDisplay = $window.FindName('ChkDisplay')
+$ChkCache = $window.FindName('ChkCache')
+$ChkCleanupPro = $window.FindName('ChkCleanupPro')
+
+$ChkNetworkCommon = $window.FindName('ChkNetworkCommon')
+$ChkNetworkAdapter = $window.FindName('ChkNetworkAdapter')
+$ChkMSI = $window.FindName('ChkMSI')
+$ChkBCD = $window.FindName('ChkBCD')
+
+$ChkGpuVendor = $window.FindName('ChkGpuVendor')
+$ChkGameExeGeneric = $window.FindName('ChkGameExeGeneric')
+
+$ChkNicAdvanced = $window.FindName('ChkNicAdvanced')
+$ChkOverlayKiller = $window.FindName('ChkOverlayKiller')
+$ChkSecurityOptional = $window.FindName('ChkSecurityOptional')
+$ChkVendorCleanup = $window.FindName('ChkVendorCleanup')
+$ChkValidationReport = $window.FindName('ChkValidationReport')
+
+$ChkGaming = $window.FindName('ChkGaming')
+$ChkFortnite = $window.FindName('ChkFortnite')
+
+$DebloatBoxes = [ordered]@{
+    'Clipchamp' = $window.FindName('DbClipchamp')
+    'Bing News' = $window.FindName('DbBingNews')
+    'Get Help' = $window.FindName('DbGetHelp')
+    'Get Started' = $window.FindName('DbGetStarted')
+    'Office Hub' = $window.FindName('DbOfficeHub')
+    'Solitaire' = $window.FindName('DbSolitaire')
+    'People' = $window.FindName('DbPeople')
+    'Skype' = $window.FindName('DbSkype')
+    'Teams Consumer' = $window.FindName('DbTeams')
+    'Xbox TCUI' = $window.FindName('DbXboxTCUI')
+    'Xbox App' = $window.FindName('DbXboxApp')
+    'Xbox Game Overlay' = $window.FindName('DbXboxGameOverlay')
+    'Xbox Gaming Overlay' = $window.FindName('DbXboxGamingOverlay')
+    'Xbox Identity Provider' = $window.FindName('DbXboxIdentity')
+    'Xbox Speech To Text' = $window.FindName('DbXboxSpeech')
+    'Phone Link' = $window.FindName('DbPhoneLink')
+    'Groove Music' = $window.FindName('DbGroove')
+    'Movies and TV' = $window.FindName('DbMovies')
+    'To Do' = $window.FindName('DbTodo')
+    'Family' = $window.FindName('DbFamily')
+    'Quick Assist' = $window.FindName('DbQuickAssist')
+    'Dev Home' = $window.FindName('DbDevHome')
+    'Feedback Hub' = $window.FindName('DbFeedbackHub')
+    'Maps' = $window.FindName('DbMaps')
+    'Camera' = $window.FindName('DbCamera')
+    'Sound Recorder' = $window.FindName('DbSoundRecorder')
+    'Alarms' = $window.FindName('DbAlarms')
+    'Mail and Calendar' = $window.FindName('DbMailCalendar')
+}
 
 $RecommendedDebloat = @(
-    'Clipchamp','Bing News','Get Help','Get Started','Office Hub','Solitaire','People','Skype','Teams Consumer',
-    'Xbox TCUI','Xbox App','Xbox Game Overlay','Xbox Gaming Overlay','Xbox Identity Provider','Xbox Speech To Text',
-    'Phone Link','Groove Music','Movies and TV','To Do','Family','Quick Assist','Dev Home','Feedback Hub','Maps'
+    'Clipchamp',
+    'Bing News',
+    'Get Help',
+    'Get Started',
+    'Office Hub',
+    'Solitaire',
+    'People',
+    'Skype',
+    'Teams Consumer',
+    'Xbox TCUI',
+    'Xbox App',
+    'Xbox Game Overlay',
+    'Xbox Gaming Overlay',
+    'Xbox Identity Provider',
+    'Xbox Speech To Text',
+    'Phone Link',
+    'Groove Music',
+    'Movies and TV'
 )
 
-function Get-SelectedDebloatItems {
-    $items = @()
-    foreach ($key in $DebloatBoxes.Keys) {
-        if ($DebloatBoxes[$key].IsChecked) {
-            $items += $key
-        }
-    }
-    return $items
-}
+# =========================================================
+# UI HELPERS
+# =========================================================
 
 function Set-DebloatSelection {
     param([string[]]$Items)
+
     foreach ($key in $DebloatBoxes.Keys) {
         $DebloatBoxes[$key].IsChecked = $false
     }
-    foreach ($name in $Items) {
-        if ($DebloatBoxes.Contains($name)) {
-            $DebloatBoxes[$name].IsChecked = $true
+
+    foreach ($item in $Items) {
+        if ($DebloatBoxes.Contains($item)) {
+            $DebloatBoxes[$item].IsChecked = $true
         }
+    }
+}
+
+function Get-SelectedDebloatItems {
+    $selected = New-Object System.Collections.Generic.List[string]
+    foreach ($key in $DebloatBoxes.Keys) {
+        if ($DebloatBoxes[$key].IsChecked) {
+            $selected.Add($key)
+        }
+    }
+    return $selected
+}
+
+function Get-NetModeText {
+    if ($CmbNetMode.SelectedIndex -eq 1) { return 'Wi-Fi' }
+    return 'LAN'
+}
+
+function Update-HardwareInfoBlock {
+    $lines = @()
+    $lines += Get-TedeHardwareProfile
+    $lines += 'NET MODE: ' + (Get-NetModeText)
+    $TxtHardwareInfo.Text = ($lines -join [Environment]::NewLine)
+}
+
+function Update-RiskInfo {
+    $warnings = New-Object System.Collections.Generic.List[string]
+
+    if ($ChkDebloatAggressive.IsChecked) { $warnings.Add('Debloat aggressive può rimuovere app secondarie Microsoft.') }
+    if ($ChkDebloatExtreme.IsChecked) { $warnings.Add('Debloat extreme usa la tua selezione manuale ed è più facile fare danni.') }
+    if ($ChkMSI.IsChecked) { $warnings.Add('MSI mode è più aggressivo e dipende dall’hardware.') }
+    if ($ChkBCD.IsChecked) { $warnings.Add('BCD / timer tweaks modificano il boot configuration data.') }
+    if ($ChkSecurityOptional.IsChecked) { $warnings.Add('Security optional spegne VBS/HVCI e riduce protezioni.') }
+
+    $risk = Get-TedeRiskLevel `
+        -HasAggressive ([bool]$ChkDebloatAggressive.IsChecked) `
+        -HasBCD ([bool]$ChkBCD.IsChecked) `
+        -HasMSI ([bool]$ChkMSI.IsChecked) `
+        -HasSecurity ([bool]$ChkSecurityOptional.IsChecked) `
+        -HasExtremeDebloat ([bool]$ChkDebloatExtreme.IsChecked)
+
+    $TxtRiskLevel.Text = $risk
+
+    switch ($risk) {
+        'BASSO' { $TxtRiskLevel.Foreground = '#9FE870' }
+        'MEDIO' { $TxtRiskLevel.Foreground = '#F7D774' }
+        'ALTO'  { $TxtRiskLevel.Foreground = '#FF8B7A' }
+    }
+
+    if ($warnings.Count -eq 0) {
+        $TxtWarnings.Text = 'Nessun warning importante con la selezione attuale.'
+    }
+    else {
+        $TxtWarnings.Text = ($warnings -join [Environment]::NewLine)
     }
 }
 
 function Set-ModeDisplay {
-    if ($RbSafe.IsChecked) {
-        $TxtModeLabel.Text = 'Mode: SAFE'
-        $TxtModeChip.Text = 'SAFE'
-        $ModeChipBorder.Background = '#146B6C'
-        $TxtPresetDescription.Text = 'East Blue: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common.'
+    if ($RbGear2.IsChecked) {
+        $TxtModeLabel.Text = 'Route: GEAR 2'
+        $TxtModeChip.Text = 'GEAR 2'
+        $ModeChipBorder.Background = '#8C4C22'
+        $ModeChipBorder.BorderBrush = '#D6A84F'
+        $TxtModeChip.Foreground = '#FFF4DA'
+        $TxtPresetDescription.Text = 'Gear 2: preset safe competitivo con servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup safe, gaming common e chiusura leggera dei processi inutili.'
     }
-    elseif ($RbInsane.IsChecked) {
-        $TxtModeLabel.Text = 'Mode: INSANE'
-        $TxtModeChip.Text = 'INSANE'
-        $ModeChipBorder.Background = '#A93428'
-        $TxtPresetDescription.Text = 'Yonko Mode: aggiunge debloat aggressive, memory aggressive, security optional, vendor cleanup, game/network advanced, MSI, BCD, validation report e Fortnite specific.'
+    elseif ($RbGear4.IsChecked) {
+        $TxtModeLabel.Text = 'Route: GEAR 4'
+        $TxtModeChip.Text = 'GEAR 4'
+        $ModeChipBorder.Background = '#A63B2F'
+        $ModeChipBorder.BorderBrush = '#E1B866'
+        $TxtModeChip.Foreground = '#FFF4DA'
+        $TxtPresetDescription.Text = 'Gear 4: hard comp con base completa più storage, display, cache, cleanup pro, rete, NIC tuning, GPU helper, overlay killer e validation report.'
+    }
+    elseif ($RbGear5.IsChecked) {
+        $TxtModeLabel.Text = 'Route: GEAR 5'
+        $TxtModeChip.Text = 'GEAR 5'
+        $ModeChipBorder.Background = '#D9F3FF'
+        $ModeChipBorder.BorderBrush = '#FFF4DA'
+        $TxtModeChip.Foreground = '#12202A'
+        $TxtPresetDescription.Text = 'Gear 5: max mode con debloat aggressive, memory aggressive, MSI, BCD, security optional, vendor cleanup, gaming common e Fortnite specific.'
     }
     else {
-        $TxtModeLabel.Text = 'Mode: CUSTOM'
-        $TxtModeChip.Text = 'CUSTOM'
-        $ModeChipBorder.Background = '#56483E'
-        $TxtPresetDescription.Text = 'Grand Line Custom: applica solo i gruppi selezionati nel tab Tweaks, incluso debloat extreme custom.'
+        $TxtModeLabel.Text = 'Route: GEAR CUSTOM'
+        $TxtModeChip.Text = 'GEAR CUSTOM'
+        $ModeChipBorder.Background = '#5C2E91'
+        $ModeChipBorder.BorderBrush = '#D6A84F'
+        $TxtModeChip.Foreground = '#FFF4DA'
+        $TxtPresetDescription.Text = 'Gear Custom: modalità manuale con controllo totale delle checkbox e dei blocchi del pannello.'
     }
+
+    Update-HardwareInfoBlock
+    Update-RiskInfo
 }
 
-function Set-SafePreset {
-    $ChkServicesBase.IsChecked = $true
-    $ChkDebloatSafe.IsChecked = $true
+function Clear-AllMainTweaks {
+    $ChkServicesBase.IsChecked = $false
+    $ChkDebloatSafe.IsChecked = $false
     $ChkDebloatAggressive.IsChecked = $false
     $ChkDebloatExtreme.IsChecked = $false
-    $ChkPowerAdvanced.IsChecked = $true
-    $ChkScheduler.IsChecked = $true
-    $ChkInput.IsChecked = $true
-    $ChkUsb.IsChecked = $true
-    $ChkMemoryLite.IsChecked = $true
-    $ChkMemoryAggressive.IsChecked = $false
-    $ChkCleanupSafe.IsChecked = $true
-    $ChkStorage.IsChecked = $true
-    $ChkDisplay.IsChecked = $true
-    $ChkCache.IsChecked = $true
-    $ChkCleanupPro.IsChecked = $true
-    $ChkNetworkCommon.IsChecked = $true
-    $ChkNetworkAdapter.IsChecked = $true
-    $ChkMSI.IsChecked = $true
-    $ChkBCD.IsChecked = $true
-    $ChkGpuVendor.IsChecked = $true
-    $ChkGameExeGeneric.IsChecked = $false
-    $ChkNicAdvanced.IsChecked = $true
-    $ChkOverlayKiller.IsChecked = $true
-    $ChkSecurityOptional.IsChecked = $false
-    $ChkVendorCleanup.IsChecked = $false
-    $ChkValidationReport.IsChecked = $true
-    $ChkGaming.IsChecked = $true
-    $ChkFortnite.IsChecked = $false
-    Set-DebloatSelection -Items $RecommendedDebloat
-    $TxtStatus.Text = 'Preset EAST BLUE caricato.'
-}
 
-function Set-InsanePreset {
-    $ChkServicesBase.IsChecked = $true
-    $ChkDebloatSafe.IsChecked = $false
-    $ChkDebloatAggressive.IsChecked = $true
-    $ChkDebloatExtreme.IsChecked = $false
-    $ChkPowerAdvanced.IsChecked = $true
-    $ChkScheduler.IsChecked = $true
-    $ChkInput.IsChecked = $true
-    $ChkUsb.IsChecked = $true
+    $ChkPowerAdvanced.IsChecked = $false
+    $ChkScheduler.IsChecked = $false
+    $ChkInput.IsChecked = $false
+    $ChkUsb.IsChecked = $false
+
     $ChkMemoryLite.IsChecked = $false
-    $ChkMemoryAggressive.IsChecked = $true
-    $ChkCleanupSafe.IsChecked = $true
-    $ChkStorage.IsChecked = $true
-    $ChkDisplay.IsChecked = $true
-    $ChkCache.IsChecked = $true
-    $ChkCleanupPro.IsChecked = $true
-    $ChkNetworkCommon.IsChecked = $true
-    $ChkNetworkAdapter.IsChecked = $true
-    $ChkMSI.IsChecked = $true
-    $ChkBCD.IsChecked = $true
-    $ChkGpuVendor.IsChecked = $true
-    $ChkGameExeGeneric.IsChecked = $false
-    $ChkNicAdvanced.IsChecked = $true
-    $ChkOverlayKiller.IsChecked = $true
-    $ChkSecurityOptional.IsChecked = $true
-    $ChkVendorCleanup.IsChecked = $true
-    $ChkValidationReport.IsChecked = $true
-    $ChkGaming.IsChecked = $true
-    $ChkFortnite.IsChecked = $true
-    Set-DebloatSelection -Items $RecommendedDebloat
-    $TxtStatus.Text = 'Preset YONKO MODE caricato.'
-}
+    $ChkMemoryAggressive.IsChecked = $false
 
-function Set-CustomPreset {
+    $ChkCleanupSafe.IsChecked = $false
+
+    $ChkStorage.IsChecked = $false
+    $ChkDisplay.IsChecked = $false
+    $ChkCache.IsChecked = $false
+    $ChkCleanupPro.IsChecked = $false
+
+    $ChkNetworkCommon.IsChecked = $false
+    $ChkNetworkAdapter.IsChecked = $false
+    $ChkMSI.IsChecked = $false
+    $ChkBCD.IsChecked = $false
+
     $ChkGpuVendor.IsChecked = $false
     $ChkGameExeGeneric.IsChecked = $false
+
     $ChkNicAdvanced.IsChecked = $false
     $ChkOverlayKiller.IsChecked = $false
     $ChkSecurityOptional.IsChecked = $false
     $ChkVendorCleanup.IsChecked = $false
     $ChkValidationReport.IsChecked = $false
-    $TxtStatus.Text = 'Modalita GRAND LINE CUSTOM attiva. Modifica le checkbox a piacere.'
+
+    $ChkGaming.IsChecked = $false
+    $ChkFortnite.IsChecked = $false
 }
 
-function Update-NavButtons {
-    param([int]$SelectedIndex)
+function Set-Gear2Preset {
+    Clear-AllMainTweaks
 
-    $BtnNavPreset.Background = '#1E150F'
-    $BtnNavTweaks.Background = '#1E150F'
-    $BtnNavInfo.Background = '#1E150F'
-    $BtnNavPreset.BorderBrush = '#7C5D2F'
-    $BtnNavTweaks.BorderBrush = '#7C5D2F'
-    $BtnNavInfo.BorderBrush = '#7C5D2F'
+    $ChkServicesBase.IsChecked = $true
+    $ChkDebloatSafe.IsChecked = $true
 
-    switch ($SelectedIndex) {
-        0 {
-            $BtnNavPreset.Background = '#4B2D18'
-            $BtnNavPreset.BorderBrush = '#D6A84F'
-        }
-        1 {
-            $BtnNavTweaks.Background = '#4B2D18'
-            $BtnNavTweaks.BorderBrush = '#D6A84F'
-        }
-        2 {
-            $BtnNavInfo.Background = '#4B2D18'
-            $BtnNavInfo.BorderBrush = '#D6A84F'
-        }
-    }
+    $ChkPowerAdvanced.IsChecked = $true
+    $ChkScheduler.IsChecked = $true
+    $ChkInput.IsChecked = $true
+    $ChkUsb.IsChecked = $true
+
+    $ChkMemoryLite.IsChecked = $true
+    $ChkCleanupSafe.IsChecked = $true
+
+    $ChkGaming.IsChecked = $true
+    $ChkValidationReport.IsChecked = $true
+
+    Set-DebloatSelection -Items $RecommendedDebloat
+    $TxtStatus.Text = 'Preset GEAR 2 caricato.'
+    Update-RiskInfo
 }
 
-$RbSafe.Add_Checked({ Set-ModeDisplay; Set-SafePreset })
-$RbInsane.Add_Checked({ Set-ModeDisplay; Set-InsanePreset })
-$RbCustom.Add_Checked({ Set-ModeDisplay; Set-CustomPreset })
-$BtnNavPreset.Add_Click({ $MainTab.SelectedIndex = 0; Update-NavButtons -SelectedIndex 0 })
-$BtnNavTweaks.Add_Click({ $MainTab.SelectedIndex = 1; Update-NavButtons -SelectedIndex 1 })
-$BtnNavInfo.Add_Click({ $MainTab.SelectedIndex = 2; Update-NavButtons -SelectedIndex 2 })
+function Set-Gear4Preset {
+    Clear-AllMainTweaks
 
-$ChkMemoryLite.Add_Checked({ if ($ChkMemoryAggressive.IsChecked) { $ChkMemoryAggressive.IsChecked = $false } })
-$ChkMemoryAggressive.Add_Checked({ if ($ChkMemoryLite.IsChecked) { $ChkMemoryLite.IsChecked = $false } })
-$ChkDebloatSafe.Add_Checked({ if ($ChkDebloatAggressive.IsChecked) { $ChkDebloatAggressive.IsChecked = $false }; if ($ChkDebloatExtreme.IsChecked) { $ChkDebloatExtreme.IsChecked = $false } })
-$ChkDebloatAggressive.Add_Checked({ if ($ChkDebloatSafe.IsChecked) { $ChkDebloatSafe.IsChecked = $false }; if ($ChkDebloatExtreme.IsChecked) { $ChkDebloatExtreme.IsChecked = $false } })
-$ChkDebloatExtreme.Add_Checked({ if ($ChkDebloatSafe.IsChecked) { $ChkDebloatSafe.IsChecked = $false }; if ($ChkDebloatAggressive.IsChecked) { $ChkDebloatAggressive.IsChecked = $false } })
+    $ChkServicesBase.IsChecked = $true
+    $ChkDebloatSafe.IsChecked = $true
 
-$BtnDebloatRecommended.Add_Click({ Set-DebloatSelection -Items $RecommendedDebloat; $TxtStatus.Text = 'Debloat recommended selezionato.' })
-$BtnDebloatAll.Add_Click({ Set-DebloatSelection -Items @($DebloatBoxes.Keys); $TxtStatus.Text = 'Tutti i debloat selezionati.'
-    Update-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
-$BtnDebloatClear.Add_Click({ Set-DebloatSelection -Items @(); $TxtStatus.Text = 'Debloat custom pulito.'
-    Update-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
+    $ChkPowerAdvanced.IsChecked = $true
+    $ChkScheduler.IsChecked = $true
+    $ChkInput.IsChecked = $true
+    $ChkUsb.IsChecked = $true
 
-$BtnRestoreBackup.Add_Click({
-    Ensure-RunAsAdmin
-    Initialize-TedeWorkspace
-    $items = Restore-LatestTedeBackup
-    foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
-    $TxtOutput.Text = ($items -join [Environment]::NewLine)
-})
+    $ChkMemoryLite.IsChecked = $true
+    $ChkCleanupSafe.IsChecked = $true
 
-$BtnOpenData.Add_Click({
-    Initialize-TedeWorkspace
-    Open-TedePath -Path $script:TedeDataRoot
-})
+    $ChkStorage.IsChecked = $true
+    $ChkDisplay.IsChecked = $true
+    $ChkCache.IsChecked = $true
+    $ChkCleanupPro.IsChecked = $true
 
-$BtnApply.Add_Click({
-    $done = New-Object System.Collections.Generic.List[string]
+    $ChkNetworkCommon.IsChecked = $true
+    $ChkNetworkAdapter.IsChecked = $true
+
+    $ChkGpuVendor.IsChecked = $true
+    $ChkNicAdvanced.IsChecked = $true
+    $ChkOverlayKiller.IsChecked = $true
+    $ChkValidationReport.IsChecked = $true
+
+    $ChkGaming.IsChecked = $true
+
+    Set-DebloatSelection -Items $RecommendedDebloat
+    $TxtStatus.Text = 'Preset GEAR 4 caricato.'
+    Update-RiskInfo
+}
+
+function Set-Gear5Preset {
+    Clear-AllMainTweaks
+
+    $ChkServicesBase.IsChecked = $true
+    $ChkDebloatAggressive.IsChecked = $true
+
+    $ChkPowerAdvanced.IsChecked = $true
+    $ChkScheduler.IsChecked = $true
+    $ChkInput.IsChecked = $true
+    $ChkUsb.IsChecked = $true
+
+    $ChkMemoryAggressive.IsChecked = $true
+    $ChkCleanupSafe.IsChecked = $true
+
+    $ChkStorage.IsChecked = $true
+    $ChkDisplay.IsChecked = $true
+    $ChkCache.IsChecked = $true
+    $ChkCleanupPro.IsChecked = $true
+
+    $ChkNetworkCommon.IsChecked = $true
+    $ChkNetworkAdapter.IsChecked = $true
+    $ChkMSI.IsChecked = $true
+    $ChkBCD.IsChecked = $true
+
+    $ChkGpuVendor.IsChecked = $true
+    $ChkNicAdvanced.IsChecked = $true
+    $ChkOverlayKiller.IsChecked = $true
+    $ChkSecurityOptional.IsChecked = $true
+    $ChkVendorCleanup.IsChecked = $true
+    $ChkValidationReport.IsChecked = $true
+
+    $ChkGaming.IsChecked = $true
+    $ChkFortnite.IsChecked = $true
+
+    Set-DebloatSelection -Items @($DebloatBoxes.Keys)
+    $TxtStatus.Text = 'Preset GEAR 5 caricato.'
+    Update-RiskInfo
+}
+
+function Set-GearCustomPreset {
+    Clear-AllMainTweaks
+    Set-DebloatSelection -Items @()
+    $TxtStatus.Text = 'Modalità GEAR CUSTOM attiva. Modifica le checkbox a piacere.'
+    Update-RiskInfo
+}
+
+function Get-SelectedTweaks {
     $selected = New-Object System.Collections.Generic.List[string]
 
     if ($ChkServicesBase.IsChecked) { $selected.Add('Services base') }
@@ -1759,12 +1968,125 @@ $BtnApply.Add_Click({
     if ($ChkGaming.IsChecked) { $selected.Add('Gaming common') }
     if ($ChkFortnite.IsChecked) { $selected.Add('Fortnite specific') }
 
-    $riskNow = Get-TedeRiskLevel -HasExtreme ([bool]$ChkDebloatExtreme.IsChecked) -HasBCD ([bool]$ChkBCD.IsChecked) -HasMSI ([bool]$ChkMSI.IsChecked) -HasNetwork ([bool]($ChkNetworkCommon.IsChecked -or $ChkNetworkAdapter.IsChecked -or $ChkNicAdvanced.IsChecked)) -HasAggressiveDebloat ([bool]$ChkDebloatAggressive.IsChecked) -HasCleanup ([bool]($ChkCleanupPro.IsChecked -or $ChkOverlayKiller.IsChecked))
-    $warnNow = Get-TedeWarningMessages -HasExtreme ([bool]$ChkDebloatExtreme.IsChecked) -HasBCD ([bool]$ChkBCD.IsChecked) -HasMSI ([bool]$ChkMSI.IsChecked) -HasNetwork ([bool]($ChkNetworkCommon.IsChecked -or $ChkNetworkAdapter.IsChecked -or $ChkNicAdvanced.IsChecked)) -HasAggressiveDebloat ([bool]$ChkDebloatAggressive.IsChecked) -HasCleanup ([bool]($ChkCleanupPro.IsChecked -or $ChkOverlayKiller.IsChecked))
-    if (-not (Confirm-TedeSensitiveSelection -RiskText $riskNow -WarningText $warnNow)) {
-       $TxtStatus.Text = "Applicazione annullata dall'utente."
-        return
+    return $selected
+}
+
+function Build-PreviewSummary {
+    $lines = @()
+    $lines += 'Preset attivo: ' + $TxtModeChip.Text
+    $lines += 'Rete: ' + (Get-NetModeText)
+    $lines += ''
+    $lines += 'Tweaks selezionati:'
+
+    $selected = Get-SelectedTweaks
+    if ($selected.Count -eq 0) {
+        $lines += '- Nessuno'
     }
+    else {
+        foreach ($item in $selected) {
+            $lines += '- ' + $item
+        }
+    }
+
+    if ($ChkDebloatExtreme.IsChecked) {
+        $lines += ''
+        $lines += 'Debloat extreme scelti:'
+        $db = Get-SelectedDebloatItems
+        if ($db.Count -eq 0) {
+            $lines += '- Nessuna app selezionata'
+        }
+        else {
+            foreach ($item in $db) { $lines += '- ' + $item }
+        }
+    }
+
+    return ($lines -join [Environment]::NewLine)
+}
+
+# =========================================================
+# EVENTS
+# =========================================================
+
+$BtnNavPreset.Add_Click({ $MainTab.SelectedIndex = 0 })
+$BtnNavTweaks.Add_Click({ $MainTab.SelectedIndex = 1 })
+$BtnNavInfo.Add_Click({ $MainTab.SelectedIndex = 2 })
+
+$RbGear2.Add_Checked({ Set-ModeDisplay; Set-Gear2Preset })
+$RbGear4.Add_Checked({ Set-ModeDisplay; Set-Gear4Preset })
+$RbGear5.Add_Checked({ Set-ModeDisplay; Set-Gear5Preset })
+$RbGearCustom.Add_Checked({ Set-ModeDisplay; Set-GearCustomPreset })
+
+$ChkMemoryLite.Add_Checked({
+    if ($ChkMemoryAggressive.IsChecked) { $ChkMemoryAggressive.IsChecked = $false }
+    Update-RiskInfo
+})
+$ChkMemoryAggressive.Add_Checked({
+    if ($ChkMemoryLite.IsChecked) { $ChkMemoryLite.IsChecked = $false }
+    Update-RiskInfo
+})
+
+$ChkDebloatSafe.Add_Checked({
+    if ($ChkDebloatAggressive.IsChecked) { $ChkDebloatAggressive.IsChecked = $false }
+    if ($ChkDebloatExtreme.IsChecked) { $ChkDebloatExtreme.IsChecked = $false }
+    Update-RiskInfo
+})
+$ChkDebloatAggressive.Add_Checked({
+    if ($ChkDebloatSafe.IsChecked) { $ChkDebloatSafe.IsChecked = $false }
+    if ($ChkDebloatExtreme.IsChecked) { $ChkDebloatExtreme.IsChecked = $false }
+    Update-RiskInfo
+})
+$ChkDebloatExtreme.Add_Checked({
+    if ($ChkDebloatSafe.IsChecked) { $ChkDebloatSafe.IsChecked = $false }
+    if ($ChkDebloatAggressive.IsChecked) { $ChkDebloatAggressive.IsChecked = $false }
+    Update-RiskInfo
+})
+
+foreach ($cb in @(
+    $ChkServicesBase,$ChkPowerAdvanced,$ChkScheduler,$ChkInput,$ChkUsb,$ChkCleanupSafe,
+    $ChkStorage,$ChkDisplay,$ChkCache,$ChkCleanupPro,$ChkNetworkCommon,$ChkNetworkAdapter,
+    $ChkMSI,$ChkBCD,$ChkGpuVendor,$ChkGameExeGeneric,$ChkNicAdvanced,$ChkOverlayKiller,
+    $ChkSecurityOptional,$ChkVendorCleanup,$ChkValidationReport,$ChkGaming,$ChkFortnite
+)) {
+    $cb.Add_Checked({ Update-RiskInfo })
+    $cb.Add_Unchecked({ Update-RiskInfo })
+}
+
+$BtnDebloatRecommended.Add_Click({
+    Set-DebloatSelection -Items $RecommendedDebloat
+    $TxtStatus.Text = 'Debloat recommended selezionato.'
+})
+
+$BtnDebloatAll.Add_Click({
+    Set-DebloatSelection -Items @($DebloatBoxes.Keys)
+    $TxtStatus.Text = 'Tutti i debloat selezionati.'
+})
+
+$BtnDebloatClear.Add_Click({
+    Set-DebloatSelection -Items @()
+    $TxtStatus.Text = 'Debloat custom pulito.'
+})
+
+$BtnCreateBackup.Add_Click({
+    $items = New-TedeSafetyBackup
+    foreach ($entry in $items) { Write-TedeLog $entry 'BACKUP' }
+    $TxtOutput.Text = ($items -join [Environment]::NewLine)
+    $TxtStatus.Text = 'Backup creato.'
+    $MainTab.SelectedIndex = 2
+})
+
+$BtnOpenData.Add_Click({
+    Open-TedePath -Path $script:TedeDataRoot
+})
+
+$BtnPreview.Add_Click({
+    $TxtOutput.Text = Build-PreviewSummary
+    $TxtStatus.Text = 'Preview generata.'
+    $MainTab.SelectedIndex = 2
+})
+
+$BtnApply.Add_Click({
+    $done = New-Object System.Collections.Generic.List[string]
+    $selected = Get-SelectedTweaks
 
     if ($selected.Count -eq 0) {
         $TxtStatus.Text = 'Nessun tweak selezionato.'
@@ -1772,7 +2094,32 @@ $BtnApply.Add_Click({
         return
     }
 
+    $warnings = @()
+    if ($ChkDebloatAggressive.IsChecked) { $warnings += 'Debloat aggressive' }
+    if ($ChkDebloatExtreme.IsChecked) { $warnings += 'Debloat extreme custom' }
+    if ($ChkMSI.IsChecked) { $warnings += 'MSI mode' }
+    if ($ChkBCD.IsChecked) { $warnings += 'BCD / timer tweaks' }
+    if ($ChkSecurityOptional.IsChecked) { $warnings += 'Security optional profile' }
+
+    $riskNow = Get-TedeRiskLevel `
+        -HasAggressive ([bool]$ChkDebloatAggressive.IsChecked) `
+        -HasBCD ([bool]$ChkBCD.IsChecked) `
+        -HasMSI ([bool]$ChkMSI.IsChecked) `
+        -HasSecurity ([bool]$ChkSecurityOptional.IsChecked) `
+        -HasExtremeDebloat ([bool]$ChkDebloatExtreme.IsChecked)
+
+    if (-not (Confirm-TedeSensitiveSelection -RiskText $riskNow -Warnings $warnings)) {
+        $TxtStatus.Text = "Applicazione annullata dall'utente."
+        return
+    }
+
     try {
+        $backupItems = New-TedeSafetyBackup
+        foreach ($entry in $backupItems) {
+            $done.Add($entry)
+            Write-TedeLog $entry 'BACKUP'
+        }
+
         if ($ChkServicesBase.IsChecked) {
             foreach ($item in (Apply-ServicesBase)) { $done.Add($item) }
         }
@@ -1789,7 +2136,9 @@ $BtnApply.Add_Click({
                 $done.Add('SKIP Debloat extreme: nessuna checkbox selezionata')
             }
             else {
-                foreach ($item in (Apply-DebloatSelection -Items $customItems -RemoveForUsers ([bool]$ChkDebloatUsers.IsChecked) -RemoveProvisioned ([bool]$ChkDebloatProvisioned.IsChecked))) { $done.Add($item) }
+                foreach ($item in (Apply-DebloatSelection -Items $customItems -RemoveForUsers ([bool]$ChkDebloatUsers.IsChecked) -RemoveProvisioned ([bool]$ChkDebloatProvisioned.IsChecked))) {
+                    $done.Add($item)
+                }
             }
         }
 
@@ -1841,8 +2190,7 @@ $BtnApply.Add_Click({
         }
 
         if ($ChkNetworkAdapter.IsChecked) {
-            $mode = 'LAN'
-            if ($window.FindName('CmbNetMode').SelectedIndex -eq 1) { $mode = 'Wi-Fi' }
+            $mode = Get-NetModeText
             foreach ($item in (Apply-NetworkAdapterMode -Mode $mode)) { $done.Add($item) }
         }
 
@@ -1863,8 +2211,7 @@ $BtnApply.Add_Click({
         }
 
         if ($ChkNicAdvanced.IsChecked) {
-            $mode = 'LAN'
-            if ($window.FindName('CmbNetMode').SelectedIndex -eq 1) { $mode = 'Wi-Fi' }
+            $mode = Get-NetModeText
             foreach ($item in (Apply-NicAdvancedTuning -Mode $mode)) { $done.Add($item) }
         }
 
@@ -1892,32 +2239,50 @@ $BtnApply.Add_Click({
             foreach ($item in (Apply-FortniteSpecific)) { $done.Add($item) }
         }
 
+        foreach ($entry in $done) {
+            Write-TedeLog $entry 'APPLY'
+        }
+
         $summary = @()
         $summary += 'Selezionati:'
         $summary += ''
         foreach ($s in $selected) { $summary += '- ' + $s }
+
         if ($ChkDebloatExtreme.IsChecked) {
             $summary += ''
             $summary += 'Debloat extreme scelti:'
             foreach ($d in (Get-SelectedDebloatItems)) { $summary += '- ' + $d }
         }
+
         $summary += ''
         $summary += 'Risultati:'
         $summary += ''
         foreach ($d in $done) { $summary += '- ' + $d }
 
+        $TxtOutput.Text = ($summary -join [Environment]::NewLine)
         $TxtStatus.Text = 'Tweaks applicati: ' + $done.Count
-        [System.Windows.MessageBox]::Show(($summary -join "`n"), 'TedeTweak') | Out-Null
+        $MainTab.SelectedIndex = 2
+        [System.Windows.MessageBox]::Show('Tweaks applicati. Controlla il Captain Log per il riepilogo completo.', 'TedeTweak') | Out-Null
     }
     catch {
         $TxtStatus.Text = 'Errore: ' + $_.Exception.Message
+        $TxtOutput.Text = $_.Exception.Message
         [System.Windows.MessageBox]::Show($_.Exception.Message, 'TedeTweak - Errore') | Out-Null
     }
 })
 
+$CmbNetMode.Add_SelectionChanged({
+    Update-HardwareInfoBlock
+})
+
+# =========================================================
+# INIT
+# =========================================================
+
+Update-HardwareInfoBlock
+Update-RiskInfo
 Set-ModeDisplay
-Set-SafePreset
+Set-Gear2Preset
 $MainTab.SelectedIndex = 0
-Update-NavButtons -SelectedIndex 0
 
 $null = $window.ShowDialog()
