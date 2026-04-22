@@ -1730,7 +1730,7 @@ function Update-RiskInfo {
 
     if ($ChkDebloatAggressive.IsChecked) { $warnings.Add('Debloat aggressive può rimuovere app secondarie Microsoft.') }
     if ($ChkDebloatExtreme.IsChecked) { $warnings.Add('Debloat extreme usa la tua selezione manuale ed è più facile fare danni.') }
-    if ($ChkMSI.IsChecked) { $warnings.Add('MSI mode è più aggressivo e dipende dall’hardware.') }
+    if ($ChkMSI.IsChecked) { $warnings.Add('MSI mode è più aggressivo e dipende dallhardware.)') }
     if ($ChkBCD.IsChecked) { $warnings.Add('BCD / timer tweaks modificano il boot configuration data.') }
     if ($ChkSecurityOptional.IsChecked) { $warnings.Add('Security optional spegne VBS/HVCI e riduce protezioni.') }
 
