@@ -1087,9 +1087,93 @@ Ensure-RunAsAdmin
         WindowStartupLocation="CenterScreen"
         Background="#08131E"
         Foreground="#F8E7B6">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#FFF1CC"/>
+            <Setter Property="Background" Value="#2B1C13"/>
+            <Setter Property="BorderBrush" Value="#8A6735"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#E2B867"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#4A2E1B"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#A93428"/>
+            <Setter Property="BorderBrush" Value="#E0B15C"/>
+            <Setter Property="Foreground" Value="#FFF6E2"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="16,10"/>
+        </Style>
+        <Style x:Key="PanelCard" TargetType="Border">
+            <Setter Property="Background" Value="#21160F"/>
+            <Setter Property="BorderBrush" Value="#8A6735"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="0" Color="#000000" Opacity="0.30"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="#F7E7C1"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#F7E7C1"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
+        </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#F7E7C1"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#FFF1CC"/>
+            <Setter Property="Background" Value="#2B1C13"/>
+            <Setter Property="BorderBrush" Value="#8A6735"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="#FFF1CC"/>
+            <Setter Property="Background" Value="#2B1C13"/>
+            <Setter Property="BorderBrush" Value="#8A6735"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="236"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -1106,9 +1190,16 @@ Ensure-RunAsAdmin
                            Foreground="#FFF1CC"
                            Margin="0,0,0,18"/>
 
-                <Button Name="BtnNavPreset" Content="Crew Routes" Height="44" Margin="0,0,0,10" Background="#3A2416" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
-                <Button Name="BtnNavTweaks" Content="Ship Systems" Height="44" Margin="0,0,0,10" Background="#20150E" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
-                <Button Name="BtnNavInfo" Content="Captain Log" Height="44" Margin="0,0,0,10" Background="#20150E" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
+                <Button Name="BtnNavPreset" Content="Crew Routes" Height="48" Margin="0,0,0,10" Background="#4B2D18" Foreground="#F7E7C1" BorderBrush="#D6A84F"/>
+                <Button Name="BtnNavTweaks" Content="Ship Systems" Height="48" Margin="0,0,0,10" Background="#1E150F" Foreground="#F7E7C1" BorderBrush="#7C5D2F"/>
+                <Button Name="BtnNavInfo" Content="Captain Log" Height="48" Margin="0,0,0,10" Background="#1E150F" Foreground="#F7E7C1" BorderBrush="#7C5D2F"/>
+
+                <Border Margin="0,18,0,0" Padding="12" CornerRadius="14" Background="#1B1410" BorderBrush="#6F542B" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Private Build" FontSize="11" FontWeight="SemiBold" Foreground="#D6A84F"/>
+                        <TextBlock Text="Luxury captain layout for competitive tweaks and cleaner navigation." TextWrapping="Wrap" Foreground="#D9C7A0" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Border>
 
@@ -1119,21 +1210,31 @@ Ensure-RunAsAdmin
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="One Piece Performance Panel" FontSize="28" FontWeight="Bold" Foreground="#FFF1CC"/>
-                    <TextBlock Name="TxtModeLabel" Text="Route: EAST BLUE" FontSize="13" Margin="0,4,0,0" Foreground="#D9C7A0"/>
-                </StackPanel>
-                <Border Name="ModeChipBorder" Grid.Column="1" Background="#B63A2B" BorderBrush="#D6A84F" BorderThickness="1" CornerRadius="14" Padding="14,7" VerticalAlignment="Center">
-                    <TextBlock Name="TxtModeChip" Text="EAST BLUE" FontWeight="SemiBold" Foreground="#FFF4DA"/>
-                </Border>
-            </Grid>
+            <Border Grid.Row="0" Margin="0,0,0,12" Padding="18" CornerRadius="20" BorderBrush="#A77B32" BorderThickness="1">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#24170F" Offset="0"/>
+                        <GradientStop Color="#101922" Offset="0.68"/>
+                        <GradientStop Color="#1A1010" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="GRAND LINE EDITION" FontSize="12" FontWeight="SemiBold" Foreground="#D6A84F"/>
+                        <TextBlock Text="One Piece Performance Panel" FontSize="30" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,2,0,0"/>
+                        <TextBlock Name="TxtModeLabel" Text="Route: EAST BLUE" FontSize="13" Margin="0,6,0,0" Foreground="#D9C7A0"/>
+                    </StackPanel>
+                    <Border Name="ModeChipBorder" Grid.Column="1" Background="#7E2D22" BorderBrush="#E0B15C" BorderThickness="1" CornerRadius="16" Padding="16,8" VerticalAlignment="Center">
+                        <TextBlock Name="TxtModeChip" Text="EAST BLUE" FontWeight="SemiBold" Foreground="#FFF4DA"/>
+                    </Border>
+                </Grid>
+            </Border>
 
-            <TabControl Name="MainTab" Grid.Row="1" Background="#14100C" BorderBrush="#8A6735">
+            <TabControl Name="MainTab" Grid.Row="1" Background="#14100C" BorderBrush="#8A6735" Margin="0,2,0,0">
                 <TabItem Header="Crew Routes">
                     <Grid Background="#14100C" Margin="8">
                         <Grid.ColumnDefinitions>
@@ -1142,7 +1243,7 @@ Ensure-RunAsAdmin
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Crew Route" FontSize="15" FontWeight="Bold" Foreground="#F4D28C" Margin="0,0,0,8"/>
                                     <RadioButton Name="RbSafe" Content="East Blue (Consigliato)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
@@ -1151,7 +1252,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Border Style="{StaticResource PanelCard}" Padding="12">
                                 <StackPanel>
                                     <TextBlock Text="Configurazione hardware" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
                                     <TextBlock Text="Rete" Foreground="#F7E7C1" Margin="0,0,0,4"/>
@@ -1192,7 +1293,7 @@ Ensure-RunAsAdmin
                 <TabItem Header="Ship Systems">
                     <ScrollViewer Background="#14100C">
                         <StackPanel Margin="8">
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Ship Services and Cargo Cleanup" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Servizi Windows e rimozione bloatware selettiva." Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1203,7 +1304,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Debloat extreme custom" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Seleziona manualmente i pacchetti da rimuovere. Le opzioni sotto vengono usate solo se il toggle Debloat extreme custom e attivo." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1250,7 +1351,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Blocchi per input delay, reattivita e frametime piu stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1261,7 +1362,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Memory" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Tweak memoria lite o aggressivi." Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1270,7 +1371,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Background cleanup" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Riduce esperienze Windows e processi non essenziali senza toccare app utente comuni." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1278,7 +1379,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="System finish" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Storage, overlay display, pulizia cache e cleanup processi Windows non essenziali." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1289,7 +1390,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Network and timer" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Tuning rete competitiva, MSI mode e timer di boot." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1300,7 +1401,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Cannons and GPU" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="Vendor-specific helper tuning e tweak generici per game exe." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1311,7 +1412,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Captain Optional" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="NIC fine tuning, overlay cleanup, security profile e driver/vendor cleanup." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1323,7 +1424,7 @@ Ensure-RunAsAdmin
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Border Style="{StaticResource PanelCard}" Padding="12">
                                 <StackPanel>
                                     <TextBlock Text="Battle Mode" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
                                     <TextBlock Text="GameDVR, Game Mode, HAGS e Fortnite." Foreground="#F7E7C1" Margin="0,0,0,8"/>
@@ -1351,7 +1452,7 @@ Ensure-RunAsAdmin
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Name="TxtStatus" Grid.Column="0" Text="Pronto." VerticalAlignment="Center" Foreground="#9CA3AF"/>
-                <Button Name="BtnApply" Grid.Column="1" Content="Set Sail / Apply Tweaks" Width="160" Height="36" Background="#B63A2B" Foreground="#FFF4DA" BorderBrush="#D6A84F"/>
+                <Button Name="BtnApply" Grid.Column="1" Content="Set Sail / Apply Tweaks" Width="220" Height="42" Style="{StaticResource PrimaryActionButton}"/>
             </Grid>
         </Grid>
     </Grid>
@@ -1473,19 +1574,19 @@ function Set-ModeDisplay {
     if ($RbSafe.IsChecked) {
         $TxtModeLabel.Text = 'Mode: SAFE'
         $TxtModeChip.Text = 'SAFE'
-        $ModeChipBorder.Background = '#0D9488'
+        $ModeChipBorder.Background = '#146B6C'
         $TxtPresetDescription.Text = 'East Blue: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common.'
     }
     elseif ($RbInsane.IsChecked) {
         $TxtModeLabel.Text = 'Mode: INSANE'
         $TxtModeChip.Text = 'INSANE'
-        $ModeChipBorder.Background = '#DC2626'
+        $ModeChipBorder.Background = '#A93428'
         $TxtPresetDescription.Text = 'Yonko Mode: aggiunge debloat aggressive, memory aggressive, security optional, vendor cleanup, game/network advanced, MSI, BCD, validation report e Fortnite specific.'
     }
     else {
         $TxtModeLabel.Text = 'Mode: CUSTOM'
         $TxtModeChip.Text = 'CUSTOM'
-        $ModeChipBorder.Background = '#4B5563'
+        $ModeChipBorder.Background = '#56483E'
         $TxtPresetDescription.Text = 'Grand Line Custom: applica solo i gruppi selezionati nel tab Tweaks, incluso debloat extreme custom.'
     }
 }
@@ -1567,12 +1668,38 @@ function Set-CustomPreset {
     $TxtStatus.Text = 'Modalita GRAND LINE CUSTOM attiva. Modifica le checkbox a piacere.'
 }
 
+function Update-NavButtons {
+    param([int]$SelectedIndex)
+
+    $BtnNavPreset.Background = '#1E150F'
+    $BtnNavTweaks.Background = '#1E150F'
+    $BtnNavInfo.Background = '#1E150F'
+    $BtnNavPreset.BorderBrush = '#7C5D2F'
+    $BtnNavTweaks.BorderBrush = '#7C5D2F'
+    $BtnNavInfo.BorderBrush = '#7C5D2F'
+
+    switch ($SelectedIndex) {
+        0 {
+            $BtnNavPreset.Background = '#4B2D18'
+            $BtnNavPreset.BorderBrush = '#D6A84F'
+        }
+        1 {
+            $BtnNavTweaks.Background = '#4B2D18'
+            $BtnNavTweaks.BorderBrush = '#D6A84F'
+        }
+        2 {
+            $BtnNavInfo.Background = '#4B2D18'
+            $BtnNavInfo.BorderBrush = '#D6A84F'
+        }
+    }
+}
+
 $RbSafe.Add_Checked({ Set-ModeDisplay; Set-SafePreset })
 $RbInsane.Add_Checked({ Set-ModeDisplay; Set-InsanePreset })
 $RbCustom.Add_Checked({ Set-ModeDisplay; Set-CustomPreset })
-$BtnNavPreset.Add_Click({ $MainTab.SelectedIndex = 0 })
-$BtnNavTweaks.Add_Click({ $MainTab.SelectedIndex = 1 })
-$BtnNavInfo.Add_Click({ $MainTab.SelectedIndex = 2 })
+$BtnNavPreset.Add_Click({ $MainTab.SelectedIndex = 0; Update-NavButtons -SelectedIndex 0 })
+$BtnNavTweaks.Add_Click({ $MainTab.SelectedIndex = 1; Update-NavButtons -SelectedIndex 1 })
+$BtnNavInfo.Add_Click({ $MainTab.SelectedIndex = 2; Update-NavButtons -SelectedIndex 2 })
 
 $ChkMemoryLite.Add_Checked({ if ($ChkMemoryAggressive.IsChecked) { $ChkMemoryAggressive.IsChecked = $false } })
 $ChkMemoryAggressive.Add_Checked({ if ($ChkMemoryLite.IsChecked) { $ChkMemoryLite.IsChecked = $false } })
@@ -1791,5 +1918,6 @@ $BtnApply.Add_Click({
 Set-ModeDisplay
 Set-SafePreset
 $MainTab.SelectedIndex = 0
+Update-NavButtons -SelectedIndex 0
 
 $null = $window.ShowDialog()
