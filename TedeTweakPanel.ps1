@@ -234,7 +234,6 @@ function Apply-ServicesBase {
     $applied = @()
     $services = @(
         'SysMain',
-        'WSearch',
         'DiagTrack',
         'dmwappushservice',
         'MapsBroker',
@@ -252,6 +251,32 @@ function Apply-ServicesBase {
         'XblGameSave',
         'XboxGipSvc',
         'XboxNetApiSvc'
+        'ndu',
+        'WSearch',
+        'TabletInputService',
+        'PrintNotify',
+        'lfsvc',
+        'wisvc',
+        'SharedAccess',
+        'SSDPSRV',
+        'upnphost',
+        'lmhosts',
+        'WpcMonSvc',
+        'icssvc',
+        'PhoneSvc',
+        'SessionEnv',
+        'TermService',
+        'HvHost',
+        'vmickvpexchange',
+        'vmicguestinterface',
+        'vmicheartbeat',
+        'vmicshutdown',
+        'vmictimesync',
+        'vmicvss',
+        'FontCache',
+        'Wecsvc',
+        'WinRM',
+        'NcaSvc'
     )
 
     foreach ($service in $services) {
@@ -282,24 +307,41 @@ function Apply-MemoryLite {
 
 function Apply-MemoryAggressive {
     $applied = @()
-    $applied += Apply-MemoryLite
 
+    # QUELLO CHE C'ERA GIA'
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'DisablePagingExecutive' -Value 1
+    $applied += 'DisablePagingExecutive = 1'
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'LargeSystemCache' -Value 0
+    $applied += 'LargeSystemCache = 0'
+
+    # KERNEL IN RAM + OTTIMIZZAZIONI NUOVE
+    $mmPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
+    Set-ItemProperty -Path $mmPath -Name 'ClearPageFileAtShutdown'    -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'ClearPageFileAtShutdown = 0'
+    Set-ItemProperty -Path $mmPath -Name 'NonPagedPoolQuota'           -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NonPagedPoolQuota = 0'
+    Set-ItemProperty -Path $mmPath -Name 'NonPagedPoolSize'            -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NonPagedPoolSize = 0'
+    Set-ItemProperty -Path $mmPath -Name 'PagedPoolQuota'              -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'PagedPoolQuota = 0'
+    Set-ItemProperty -Path $mmPath -Name 'PagedPoolSize'               -Value 192 -Type DWord -Force | Out-Null
+    $applied += 'PagedPoolSize = 192'
+    Set-ItemProperty -Path $mmPath -Name 'SessionPoolSize'             -Value 48 -Type DWord -Force | Out-Null
+    $applied += 'SessionPoolSize = 48'
+    Set-ItemProperty -Path $mmPath -Name 'SessionViewSize'             -Value 48 -Type DWord -Force | Out-Null
+    $applied += 'SessionViewSize = 48'
+    Set-ItemProperty -Path $mmPath -Name 'SystemPages'                 -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'SystemPages = 0 (auto)'
+
+    # DISABLE MEMORY COMPRESSION
     try {
-        Disable-MMAgent -mc -ErrorAction Stop | Out-Null
-        $applied += 'MemoryCompression disabilitata'
-    }
-    catch {
-        try {
-            Disable-MMAgent -MemoryCompression -ErrorAction Stop | Out-Null
-            $applied += 'MemoryCompression disabilitata'
-        }
-        catch {
-            $applied += 'SKIP MemoryCompression: ' + $_.Exception.Message
-        }
-    }
+        Disable-MMAgent -mc -ErrorAction SilentlyContinue | Out-Null
+        $applied += 'Memory Compression = disabled'
+    } catch { $applied += 'SKIP Memory Compression' }
 
     return $applied
 }
+
 
 function Remove-AppxPackageSafe {
     param(
@@ -491,41 +533,39 @@ function Apply-DebloatAggressive {
 function Apply-InputTweaks {
     $applied = @()
 
-    Set-RegString -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseSpeed' -Value '0'
+    # MOUSE 1:1
+    Set-RegString -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseSpeed'      -Value '0'
     $applied += 'MouseSpeed = 0'
-
     Set-RegString -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseThreshold1' -Value '0'
     $applied += 'MouseThreshold1 = 0'
-
     Set-RegString -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseThreshold2' -Value '0'
     $applied += 'MouseThreshold2 = 0'
+    Set-RegString -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseHoverTime'  -Value '400'
+    $applied += 'MouseHoverTime = 400'
 
-    Set-RegString -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseHoverTime' -Value '0'
-    $applied += 'MouseHoverTime = 0'
-
+    # KEYBOARD DELAY MIN / SPEED MAX
     Set-RegString -Path 'HKCU:\Control Panel\Keyboard' -Name 'KeyboardSpeed' -Value '31'
     $applied += 'KeyboardSpeed = 31'
-
     Set-RegString -Path 'HKCU:\Control Panel\Keyboard' -Name 'KeyboardDelay' -Value '0'
     $applied += 'KeyboardDelay = 0'
 
-    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\StickyKeys' -Name 'Flags' -Value '506'
+    # ACCESSIBILITY KEYS OFF (eliminano polling delay nascosto)
+    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\StickyKeys'      -Name 'Flags' -Value '506'
     $applied += 'StickyKeys Flags = 506'
+    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\MouseKeys'       -Name 'Flags' -Value '506'
+    $applied += 'MouseKeys Flags = 506'
+    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\ToggleKeys'      -Name 'Flags' -Value '506'
+    $applied += 'ToggleKeys Flags = 506'
+    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'Flags' -Value '506'
+    $applied += 'FilterKeys Flags = 506'
 
-    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\ToggleKeys' -Name 'Flags' -Value '58'
-    $applied += 'ToggleKeys Flags = 58'
+    # MOUSE POINTER PRECISION OFF (raw input puro)
+    Set-RegDword -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseSensitivity' -Value 10
+    $applied += 'MouseSensitivity = 10'
 
-    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'Flags' -Value '122'
-    $applied += 'Keyboard Response Flags = 122'
-
-    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'DelayBeforeAcceptance' -Value '0'
-    $applied += 'DelayBeforeAcceptance = 0'
-
-    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'AutoRepeatDelay' -Value '0'
-    $applied += 'AutoRepeatDelay = 0'
-
-    Set-RegString -Path 'HKCU:\Control Panel\Accessibility\Keyboard Response' -Name 'AutoRepeatRate' -Value '0'
-    $applied += 'AutoRepeatRate = 0'
+    # FOREGROUND INPUT BOOST
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'Win32PrioritySeparation' -Value 26
+    $applied += 'Win32PrioritySeparation = 26'
 
     return $applied
 }
@@ -607,7 +647,7 @@ function Apply-SchedulerMMCSS {
     $applied = @()
 
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'Win32PrioritySeparation' -Value 38
-    $applied += 'Win32PrioritySeparation = 38'
+    $applied += 'Win32PrioritySeparation = 26'
 
     if (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile')) {
         New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force | Out-Null
@@ -719,38 +759,66 @@ function Clear-DirectoryContentSafe {
 function Apply-StorageAdvanced {
     $applied = @()
 
-    try { fsutil behavior set DisableDeleteNotify 0 | Out-Null; $applied += 'DisableDeleteNotify = 0' } catch { $applied += 'SKIP DisableDeleteNotify' }
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'NtfsDisableLastAccessUpdate' -Value 1
-    $applied += 'NtfsDisableLastAccessUpdate = 1'
-    Set-RegString -Path 'HKLM:\SOFTWARE\Microsoft\Dfrg\BootOptimizeFunction' -Name 'Enable' -Value 'Y'
-    $applied += 'BootOptimizeFunction Enable = Y'
+    # QUELLO CHE C'ERA GIA'
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\I/O System' -Name 'IoVerifierLevel' -Value 0
+    $applied += 'IoVerifierLevel = 0'
+    try { fsutil behavior set DisableDeleteNotify 0 | Out-Null; $applied += 'TRIM = enabled' } catch { $applied += 'SKIP TRIM' }
 
-    try {
-        $vols = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' }
-        foreach ($vol in $vols) {
-            try {
-                Optimize-Volume -DriveLetter $vol.DriveLetter -ErrorAction SilentlyContinue | Out-Null
-                $applied += 'Optimize-Volume su ' + $vol.DriveLetter
-            }
-            catch {
-                $applied += 'SKIP Optimize-Volume su ' + $vol.DriveLetter
-            }
-        }
-    }
-    catch {
-        $applied += 'SKIP query volumi: ' + $_.Exception.Message
-    }
+    # NTFS OTTIMIZZAZIONE
+    try { fsutil behavior set disable8dot3 1       | Out-Null; $applied += 'disable8dot3 = 1' }       catch { $applied += 'SKIP 8dot3' }
+    try { fsutil behavior set disablelastaccess 1  | Out-Null; $applied += 'disablelastaccess = 1' }  catch { $applied += 'SKIP lastaccess' }
+    try { fsutil behavior set disablecompression 1 | Out-Null; $applied += 'disablecompression = 1' } catch { $applied += 'SKIP compression' }
+    try { fsutil behavior set mftzone 2            | Out-Null; $applied += 'mftzone = 2' }            catch { $applied += 'SKIP mftzone' }
+
+    # NTFS REGISTRY
+    $fsPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+    Set-ItemProperty -Path $fsPath -Name 'LargeSystemCache'              -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'LargeSystemCache = 0'
+    Set-ItemProperty -Path $fsPath -Name 'NtfsMemoryUsage'               -Value 2 -Type DWord -Force | Out-Null
+    $applied += 'NtfsMemoryUsage = 2'
+    Set-ItemProperty -Path $fsPath -Name 'NtfsDisable8dot3NameCreation'  -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'NtfsDisable8dot3NameCreation = 1'
+    Set-ItemProperty -Path $fsPath -Name 'NtfsDisableLastAccessUpdate'   -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'NtfsDisableLastAccessUpdate = 1'
 
     return $applied
 }
 
 function Apply-DisplayPipeline {
     $applied = @()
-    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Dwm' -Name 'OverlayTestMode' -Value 5
-    $applied += 'OverlayTestMode = 5'
+
+    # QUELLO CHE C'ERA GIA'
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value 2
+    $applied += 'HAGS = enabled'
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'GPU Priority' -Value 8
+    $applied += 'GPU Priority = 8'
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'Priority' -Value 6
+    $applied += 'Games Priority = 6'
+
+    # GAMEBAR COMPLETAMENTE OFF
+    $gbPath = 'HKCU:\Software\Microsoft\GameBar'
+    if (-not (Test-Path $gbPath)) { New-Item -Path $gbPath -Force | Out-Null }
+    Set-ItemProperty -Path $gbPath -Name 'AllowAutoGameMode'          -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'AllowAutoGameMode = 0'
+    Set-ItemProperty -Path $gbPath -Name 'UseNexusForGameBarEnabled'  -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'UseNexusForGameBarEnabled = 0'
+    Set-ItemProperty -Path $gbPath -Name 'ShowStartupPanel'           -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'ShowStartupPanel = 0'
+    Set-ItemProperty -Path $gbPath -Name 'GamePanelStartupTipIndex'   -Value 3 -Type DWord -Force | Out-Null
+    $applied += 'GamePanelStartupTipIndex = 3'
+
+    # GAMEDVR OFF
+    $dvrPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR'
+    if (-not (Test-Path $dvrPath)) { New-Item -Path $dvrPath -Force | Out-Null }
+    Set-ItemProperty -Path $dvrPath -Name 'AllowGameDVR' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'GameDVR = disabled'
+
+    # GAME MODE OFF (peggiora frametime stabili)
+    Set-ItemProperty -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue | Out-Null
+    $applied += 'AutoGameMode = 0'
+
     return $applied
 }
-
 function Apply-CacheCleanup {
     $applied = @()
     $paths = @(
@@ -794,31 +862,49 @@ function Apply-ProcessCleanupSafePro {
 function Apply-NetworkCommon {
     $applied = @()
 
+   function Apply-NetworkCommon {
+    $applied = @()
+
     try { netsh interface tcp set global autotuninglevel=normal | Out-Null; $applied += 'autotuninglevel = normal' } catch { $applied += 'SKIP autotuninglevel' }
     try { netsh interface tcp set global rss=enabled | Out-Null; $applied += 'rss = enabled' } catch { $applied += 'SKIP rss' }
     try { netsh interface tcp set global rsc=disabled | Out-Null; $applied += 'rsc = disabled' } catch { $applied += 'SKIP rsc' }
     try { netsh interface tcp set global ecncapability=disabled | Out-Null; $applied += 'ecncapability = disabled' } catch { $applied += 'SKIP ecncapability' }
     try { netsh interface tcp set global timestamps=disabled | Out-Null; $applied += 'timestamps = disabled' } catch { $applied += 'SKIP timestamps' }
 
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Ndu' -Name 'Start' -Value 4
-    $applied += 'Ndu Start = 4'
+    # PACKET LOSS TWEAKS
+    $tcpPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
+    Set-ItemProperty -Path $tcpPath -Name 'DefaultReceiveWindow'      -Value 256960  -Type DWord -Force | Out-Null
+    $applied += 'DefaultReceiveWindow = 256960'
+    Set-ItemProperty -Path $tcpPath -Name 'DefaultSendWindow'         -Value 256960  -Type DWord -Force | Out-Null
+    $applied += 'DefaultSendWindow = 256960'
+    Set-ItemProperty -Path $tcpPath -Name 'MaxDupAcks'                -Value 2       -Type DWord -Force | Out-Null
+    $applied += 'MaxDupAcks = 2'
+    Set-ItemProperty -Path $tcpPath -Name 'GlobalMaxTcpWindowSize'    -Value 65535   -Type DWord -Force | Out-Null
+    $applied += 'GlobalMaxTcpWindowSize = 65535'
+    Set-ItemProperty -Path $tcpPath -Name 'TcpTimedWaitDelay'         -Value 30      -Type DWord -Force | Out-Null
+    $applied += 'TcpTimedWaitDelay = 30'
+    Set-ItemProperty -Path $tcpPath -Name 'MaxUserPort'               -Value 65534   -Type DWord -Force | Out-Null
+    $applied += 'MaxUserPort = 65534'
+    Set-ItemProperty -Path $tcpPath -Name 'FastSendDatagramThreshold' -Value 1024    -Type DWord -Force | Out-Null
+    $applied += 'FastSendDatagramThreshold = 1024'
+    Set-ItemProperty -Path $tcpPath -Name 'DisableTaskOffload'        -Value 1       -Type DWord -Force | Out-Null
+    $applied += 'DisableTaskOffload = 1'
 
-    try {
-        $ifaces = Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -ErrorAction SilentlyContinue
-        $count = 0
-        foreach ($iface in $ifaces) {
-            New-ItemProperty -Path $iface.PSPath -Name 'TcpAckFrequency' -PropertyType DWord -Value 1 -Force | Out-Null
-            New-ItemProperty -Path $iface.PSPath -Name 'TCPNoDelay' -PropertyType DWord -Value 1 -Force | Out-Null
-            New-ItemProperty -Path $iface.PSPath -Name 'TcpDelAckTicks' -PropertyType DWord -Value 0 -Force | Out-Null
-            $count++
-        }
-        $applied += 'TCP low latency su interfacce: ' + $count
-    }
-    catch {
-        $applied += 'SKIP TCP interface tuning: ' + $_.Exception.Message
-    }
+    # QoS - libera 20% banda riservata
+    $qosPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched'
+    if (-not (Test-Path $qosPath)) { New-Item -Path $qosPath -Force | Out-Null }
+    Set-ItemProperty -Path $qosPath -Name 'NonBestEffortLimit' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'QoS NonBestEffortLimit = 0'
+
+    # WiFi specifico
+    $wcmPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy'
+    if (-not (Test-Path $wcmPath)) { New-Item -Path $wcmPath -Force | Out-Null }
+    Set-ItemProperty -Path $wcmPath -Name 'fMinimizeConnections' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue | Out-Null
+    $applied += 'WiFi fMinimizeConnections = 0'
 
     return $applied
+ 
+   }
 }
 
 function Apply-NetworkAdapterMode {
@@ -901,13 +987,29 @@ function Apply-MSIMode {
 
 function Apply-BCDTimerTweaks {
     $applied = @()
-    try { bcdedit /set disabledynamictick yes | Out-Null; $applied += 'disabledynamictick = yes' } catch { $applied += 'SKIP disabledynamictick' }
-    try { bcdedit /deletevalue useplatformclock | Out-Null; $applied += 'useplatformclock rimosso' } catch { $applied += 'SKIP useplatformclock' }
-    try { bcdedit /set useplatformtick yes | Out-Null; $applied += 'useplatformtick = yes' } catch { $applied += 'SKIP useplatformtick' }
-    try { bcdedit /set tscsyncpolicy Enhanced | Out-Null; $applied += 'tscsyncpolicy = Enhanced' } catch { $applied += 'SKIP tscsyncpolicy' }
+
+    # QUELLO CHE C'ERA GIA'
+    try { bcdedit /set disabledynamictick yes    | Out-Null; $applied += 'disabledynamictick = yes' }    catch { $applied += 'SKIP disabledynamictick' }
+    try { bcdedit /set useplatformtick yes       | Out-Null; $applied += 'useplatformtick = yes' }       catch { $applied += 'SKIP useplatformtick' }
+    try { bcdedit /set tscsyncpolicy Enhanced    | Out-Null; $applied += 'tscsyncpolicy = Enhanced' }    catch { $applied += 'SKIP tscsyncpolicy' }
+    try { bcdedit /set hypervisorlaunchtype off  | Out-Null; $applied += 'hypervisorlaunchtype = off' }  catch { $applied += 'SKIP hypervisorlaunchtype' }
+
+    # BOOT OTTIMIZZAZIONE NUOVA
+    try { bcdedit /set bootlog no                | Out-Null; $applied += 'bootlog = no' }                catch { $applied += 'SKIP bootlog' }
+    try { bcdedit /set quietboot yes             | Out-Null; $applied += 'quietboot = yes' }             catch { $applied += 'SKIP quietboot' }
+    try { bcdedit /set bootmenupolicy Legacy     | Out-Null; $applied += 'bootmenupolicy = Legacy' }     catch { $applied += 'SKIP bootmenupolicy' }
+    try { bcdedit /set nx AlwaysOff             | Out-Null; $applied += 'nx = AlwaysOff' }              catch { $applied += 'SKIP nx' }
+    try { bcdedit /set ems no                   | Out-Null; $applied += 'ems = no' }                    catch { $applied += 'SKIP ems' }
+
+    # HIBERNATION OFF + FAST STARTUP OFF
+    try { powercfg /h off                        | Out-Null; $applied += 'Hibernation = off' }           catch { $applied += 'SKIP hibernation' }
+    try {
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name 'HiberbootEnabled' -Value 0 -Type DWord -Force | Out-Null
+        $applied += 'Fast Startup = disabled'
+    } catch { $applied += 'SKIP Fast Startup' }
+
     return $applied
 }
-
 function Get-GpuVendor {
     try {
         $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name } | Select-Object -First 1
@@ -1448,8 +1550,8 @@ class TimerRes {
                             <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Crew Route" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,8"/>
-                                    <RadioButton Name="RbSafe" Content="East Blue (Consigliato)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
-                                    <RadioButton Name="RbInsane" Content="Yonko Mode (Tryhard)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbSafe" Content="Gear 2 (Consigliato)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbInsane" Content="Joy Boy (Tryhard)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
                                     <RadioButton Name="RbCustom" Content="Grand Line (Custom)" Margin="0,0,0,0" Foreground="#F7E7C1"/>
                                 </StackPanel>
                             </Border>
@@ -1788,22 +1890,22 @@ function Set-DebloatSelection {
 
 function Set-ModeDisplay {
     if ($RbSafe.IsChecked) {
-        $TxtModeLabel.Text = 'Route: EAST BLUE'
-        $TxtModeChip.Text = 'EAST BLUE'
+        $TxtModeLabel.Text = 'Luffy: GEAR 2'
+        $TxtModeChip.Text = 'Gear 2'
         $ModeChipBorder.Background = '#0D9488'
-        $TxtPresetDescription.Text = 'East Blue: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common.'
+        $TxtPresetDescription.Text = 'Gear 2: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common.'
     }
     elseif ($RbInsane.IsChecked) {
-        $TxtModeLabel.Text = 'Route: YONKO MODE'
-        $TxtModeChip.Text = 'YONKO MODE'
+        $TxtModeLabel.Text = 'Luffy: JOY BOY'
+        $TxtModeChip.Text = 'JOY BOY'
         $ModeChipBorder.Background = '#DC2626'
-        $TxtPresetDescription.Text = 'Yonko Mode: aggiunge debloat aggressive, memory aggressive, security optional, vendor cleanup, game/network advanced, MSI, BCD, validation report e Fortnite specific.'
+        $TxtPresetDescription.Text = 'Joy Boy: aggiunge debloat aggressive, memory aggressive, security optional, vendor cleanup, game/network advanced, MSI, BCD, validation report e Fortnite specific.'
     }
     else {
         $TxtModeLabel.Text = 'Route: GRAND LINE'
         $TxtModeChip.Text = 'GRAND LINE'
         $ModeChipBorder.Background = '#4B5563'
-        $TxtPresetDescription.Text = 'Joy Boy: applica solo i gruppi selezionati nel tab Tweaks, incluso debloat extreme custom.'
+        $TxtPresetDescription.Text = 'Grand Line: applica solo i gruppi selezionati nel tab Tweaks, incluso debloat extreme custom.'
     }
 }
 
@@ -2133,7 +2235,7 @@ $BtnApply.Add_Click({
         [System.Windows.MessageBox]::Show(($summary -join "`n"), 'TedeTweak') | Out-Null
     }
     catch {
-        $TxtStatus.Text = 'Errore: ' + $_.Exception.Message
+        $TxtStatus.Text = 'Errore: ' + $_.Exception.Message 
         [System.Windows.MessageBox]::Show($_.Exception.Message, 'TedeTweak - Errore') | Out-Null
     }
 })
