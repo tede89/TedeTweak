@@ -859,9 +859,6 @@ function Apply-ProcessCleanupSafePro {
     return $applied
 }
 
-function Apply-NetworkCommon {
-    $applied = @()
-
    function Apply-NetworkCommon {
     $applied = @()
 
@@ -902,10 +899,33 @@ function Apply-NetworkCommon {
     Set-ItemProperty -Path $wcmPath -Name 'fMinimizeConnections' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue | Out-Null
     $applied += 'WiFi fMinimizeConnections = 0'
 
+        try {
+        netsh winsock reset | Out-Null
+        $applied += 'winsock reset'
+    }
+    catch {
+        $applied += 'SKIP winsock reset'
+    }
+
+    try {
+        netsh int ip reset | Out-Null
+        $applied += 'ip reset'
+    }
+    catch {
+        $applied += 'SKIP ip reset'
+    }
+
+    try {
+        Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'TcpNumConnections' -Value 16777214
+        $applied += 'TcpNumConnections = 16777214'
+    }
+    catch {
+        $applied += 'SKIP TcpNumConnections'
+    }
+
     return $applied
  
    }
-}
 
 function Apply-NetworkAdapterMode {
     param([string]$Mode)
@@ -1042,21 +1062,33 @@ function Apply-GpuVendorSpecific {
     $applied = @()
     $vendor = Get-GpuVendor
     $applied += 'GPU vendor rilevato: ' + $vendor
+
     switch ($vendor) {
         'AMD' {
-            foreach ($proc in @('RadeonSoftware','AMDRSServ')) { $applied += Stop-ProcessSafe -Name $proc }
+            foreach ($proc in @('RadeonSoftware','AMDRSServ')) {
+                $applied += Stop-ProcessSafe -Name $proc
+            }
+            $applied += Apply-AmdGpuTweaks
             $applied += 'Profilo AMD helper applicato'
         }
         'NVIDIA' {
-            foreach ($proc in @('NVIDIA Share','NVIDIA App','nvsphelper64')) { $applied += Stop-ProcessSafe -Name $proc }
+            foreach ($proc in @('NVIDIA Share','NVIDIA App','nvsphelper64')) {
+                $applied += Stop-ProcessSafe -Name $proc
+            }
+            $applied += Apply-NvidiaGpuTweaks
             $applied += 'Profilo NVIDIA helper applicato'
         }
         'Intel' {
-            foreach ($proc in @('IntelGraphicsSoftware','igfxCUIService')) { $applied += Stop-ProcessSafe -Name $proc }
+            foreach ($proc in @('IntelGraphicsSoftware','igfxCUIService')) {
+                $applied += Stop-ProcessSafe -Name $proc
+            }
             $applied += 'Profilo Intel helper applicato'
         }
-        default { $applied += 'SKIP vendor-specific: GPU non riconosciuta' }
+        default {
+            $applied += 'SKIP vendor-specific: GPU non riconosciuta'
+        }
     }
+
     return $applied
 }
 
@@ -1183,6 +1215,7 @@ Ensure-RunAsAdmin
 
 function Apply-NvidiaGpuTweaks {
     $applied = @()
+
     $nvPaths = @(
         'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm',
         'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global',
@@ -1191,30 +1224,59 @@ function Apply-NvidiaGpuTweaks {
     foreach ($p in $nvPaths) {
         if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
     }
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak' -Name 'DisplayPowerSaving' -Value 0 -Type DWord -Force | Out-Null
+
+    $nvt = 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak'
+    $nvg = 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global'
+    $nvr = 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm'
+
+    # POWERMIZER - GPU sempre a clock massimo
+    Set-ItemProperty -Path $nvt -Name 'PowerMizerEnable'     -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA PowerMizerEnable = 0'
+    Set-ItemProperty -Path $nvt -Name 'PowerMizerLevel'      -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA PowerMizerLevel = 1 (max perf)'
+    Set-ItemProperty -Path $nvt -Name 'PowerMizerLevelAC'    -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA PowerMizerLevelAC = 1'
+    Set-ItemProperty -Path $nvt -Name 'DisplayPowerSaving'   -Value 0 -Type DWord -Force | Out-Null
     $applied += 'NVIDIA DisplayPowerSaving = 0'
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global' -Name 'EnableMidBufferPreemption' -Value 0 -Type DWord -Force | Out-Null
+
+    # CLOCK STABILE - no boost dinamico instabile
+    Set-ItemProperty -Path $nvt -Name 'NvCplAdjustableClockFrequencies' -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA AdjustableClockFrequencies = 1'
+
+    # PREEMPTION OFF - meno interruzioni durante rendering
+    Set-ItemProperty -Path $nvg -Name 'EnableMidBufferPreemption'    -Value 0 -Type DWord -Force | Out-Null
     $applied += 'NVIDIA MidBufferPreemption = 0'
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global' -Name 'EnableMidGfxPreemptionVGPU' -Value 0 -Type DWord -Force | Out-Null
+    Set-ItemProperty -Path $nvg -Name 'EnableMidGfxPreemptionVGPU'   -Value 0 -Type DWord -Force | Out-Null
     $applied += 'NVIDIA MidGfxPreemption = 0'
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global' -Name 'RMEdgeLpwrEnable' -Value 0 -Type DWord -Force | Out-Null
+    Set-ItemProperty -Path $nvg -Name 'RMEdgeLpwrEnable'             -Value 0 -Type DWord -Force | Out-Null
     $applied += 'NVIDIA RMEdgeLpwr = 0'
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm' -Name 'EnableResizableBar' -Value 1 -Type DWord -Force | Out-Null
+
+    # RESIZABLE BAR
+    Set-ItemProperty -Path $nvr -Name 'EnableResizableBar' -Value 1 -Type DWord -Force | Out-Null
     $applied += 'NVIDIA ResizableBar = 1'
+
     return $applied
 }
+
 
 function Apply-AmdGpuTweaks {
     $applied = @()
+
     $amdPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\AMD'
     if (-not (Test-Path $amdPath)) { New-Item -Path $amdPath -Force | Out-Null }
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\AMD' -Name 'EnableUlps' -Value 0 -Type DWord -Force | Out-Null
+
+    # GPU SEMPRE A CLOCK MASSIMO
+    Set-ItemProperty -Path $amdPath -Name 'EnableUlps'             -Value 0 -Type DWord -Force | Out-Null
     $applied += 'AMD EnableUlps = 0'
-    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\AMD' -Name 'PP_SclkDeepSleepDisable' -Value 1 -Type DWord -Force | Out-Null
-    $applied += 'AMD SclkDeepSleep disabled'
+    Set-ItemProperty -Path $amdPath -Name 'PP_SclkDeepSleepDisable' -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'AMD SclkDeepSleep = disabled'
+    Set-ItemProperty -Path $amdPath -Name 'PowerPlayEnabled'        -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'AMD PowerPlayEnabled = 0 (max perf)'
+    Set-ItemProperty -Path $amdPath -Name 'PP_ThermalAutoThrottlingEnable' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'AMD ThermalAutoThrottling = 0'
+
     return $applied
 }
-
 function Apply-GpuTweaksAuto {
     $applied = @()
     $vendor = Get-GpuVendor
