@@ -1323,7 +1323,13 @@ function Apply-WindowsUpdateDisable {
         Set-Service -Name 'UsoSvc' -StartupType Disabled | Out-Null
         $applied += 'UsoSvc disabilitato'
         Stop-Service -Name 'DoSvc' -Force -ErrorAction SilentlyContinue
-        Set-Service -Name 'DoSvc' -StartupType Disabled | Out-Null
+        try {
+    Set-Service -Name 'DoSvc' -StartupType Disabled -ErrorAction Stop | Out-Null
+    $applied += 'DoSvc disabilitato'
+}
+catch {
+    $applied += "SKIP DoSvc: $($_.Exception.Message)"
+}
         $applied += 'Delivery Optimization disabilitato'
         Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name 'NoAutoUpdate' -Value 1 -Type DWord -Force | Out-Null
         $applied += 'NoAutoUpdate policy = 1'
@@ -1364,17 +1370,28 @@ function Apply-TelemetryAdvanced {
 
 function Apply-ETWOff {
     $applied = @()
-    $etwSessions = @('DiagLog','Diagtrack-Listener','NOOLAS','WiFiSession')
+    $etwSessions = @('DiagLog','Diagtrack-Listener','NOLAAS','WiFiSession')
     foreach ($s in $etwSessions) {
         try {
             & logman.exe stop $s -ets 2>$null | Out-Null
             $applied += "ETW session stopped: $s"
         } catch { $applied += "SKIP ETW $s" }
     }
+
+    $diagPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener'
     try {
-        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener' -Name 'Start' -Value 0 -Type DWord -Force | Out-Null
-        $applied += 'AutoLogger-Diagtrack disabled'
-    } catch { $applied += 'SKIP AutoLogger-Diagtrack' }
+        if (Test-Path $diagPath) {
+            Set-ItemProperty -Path $diagPath -Name 'Start' -Value 0 -Type DWord -Force | Out-Null
+            $applied += 'AutoLogger-Diagtrack disabled'
+        }
+        else {
+            $applied += 'SKIP AutoLogger-Diagtrack path non presente'
+        }
+    }
+    catch {
+        $applied += "SKIP AutoLogger-Diagtrack: $($_.Exception.Message)"
+    }
+
     return $applied
 }
 
@@ -1718,23 +1735,23 @@ class TimerRes {
                             </Border>
 
                             <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
-                                <StackPanel>
-                                    <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Blocchi per input delay, reattivita e frametime piu stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkPowerAdvanced" Content="Power advanced (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkScheduler" Content="Scheduler / MMCSS (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkInput" Content="Input tweaks (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkUsb
-                                    <CheckBox Name="ChkGpuTweaks" Content="GPU driver tweaks (NVIDIA/AMD)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkPagefile" Content="Pagefile fisso RAM size" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkWUpdateOff" Content="Windows Update OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkETWOff" Content="ETW Telemetry OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkShaderClean" Content="Shader cache cleanup" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkTimerRes" Content="Timer Resolution 1ms" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkSpectreOff" Content="Spectre/Meltdown OFF (RISCHIO)" Foreground="#F7E7C1" Margin="0,0,0,4"/>" Content="USB low latency (reale)" Foreground="#F7E7C1"/>
-                                </StackPanel>
-                            </Border>
+    <StackPanel>
+        <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,4"/>
+        <TextBlock Text="Blocchi per input delay, reattività e frametime più stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
 
+        <CheckBox Name="ChkPowerAdvanced" Content="Power advanced reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkScheduler" Content="Scheduler MMCSS reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkInput" Content="Input tweaks reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkUsb" Content="USB low latency reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkGpuTweaks" Content="GPU driver tweaks NVIDIA/AMD" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkPagefile" Content="Pagefile fisso RAM size" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkWUpdateOff" Content="Windows Update OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkETWOff" Content="ETW Telemetry OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkShaderClean" Content="Shader cache cleanup" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkTimerRes" Content="Timer Resolution 1ms" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+        <CheckBox Name="ChkSpectreOff" Content="Spectre/Meltdown OFF RISCHIO" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+    </StackPanel>
+</Border>
                             <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Memory" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,4"/>
@@ -2044,7 +2061,7 @@ function Set-InsanePreset {
     $ChkGaming.IsChecked = $true
     $ChkFortnite.IsChecked = $true
     Set-DebloatSelection -Items $RecommendedDebloat
-    $TxtStatus.Text = 'Preset GEAR 4 caricato.'
+    $TxtStatus.Text = 'Preset JOY BOY caricato.'
 
 
     $applied += Apply-GpuTweaksAuto
@@ -2064,21 +2081,50 @@ function Set-InsanePreset {
 }
 
 function Set-CustomPreset {
-    if ($ChkGpuTweaks.IsChecked) { $done += Apply-GpuTweaksAuto }
-    if ($ChkPagefile.IsChecked) { $done += Apply-PagefileFixed }
-    if ($ChkWUpdateOff.IsChecked) { $done += Apply-WindowsUpdateDisable }
-    if ($ChkETWOff.IsChecked) { $done += Apply-ETWOff }
-    if ($ChkShaderClean.IsChecked) { $done += Apply-ShaderCacheClean }
-    if ($ChkTimerRes.IsChecked) { $done += Set-TimerResolution }
-    if ($ChkSpectreOff.IsChecked) { $done += Apply-SpectreMitigationsOff }
-    $ChkGpuVendor.IsChecked = $false
-    $ChkGameExeGeneric.IsChecked = $false
-    $ChkNicAdvanced.IsChecked = $false
-    $ChkOverlayKiller.IsChecked = $false
-    $ChkSecurityOptional.IsChecked = $false
-    $ChkVendorCleanup.IsChecked = $false
-    $ChkValidationReport.IsChecked = $false
-    $TxtStatus.Text = 'Modalita JOY BOY attiva. Seleziona manualmente i tweak da applicare.'
+    $ChkServicesBase.IsChecked        = $false
+    $ChkDebloatSafe.IsChecked         = $false
+    $ChkDebloatAggressive.IsChecked   = $false
+    $ChkDebloatExtreme.IsChecked      = $false
+
+    $ChkPowerAdvanced.IsChecked       = $false
+    $ChkScheduler.IsChecked           = $false
+    $ChkInput.IsChecked               = $false
+    $ChkUsb.IsChecked                 = $false
+
+    $ChkMemoryLite.IsChecked          = $false
+    $ChkMemoryAggressive.IsChecked    = $false
+
+    $ChkCleanupSafe.IsChecked         = $false
+    $ChkStorage.IsChecked             = $false
+    $ChkDisplay.IsChecked             = $false
+    $ChkCache.IsChecked               = $false
+    $ChkCleanupPro.IsChecked          = $false
+
+    $ChkNetworkCommon.IsChecked       = $false
+    $ChkNetworkAdapter.IsChecked      = $false
+    $ChkMSI.IsChecked                 = $false
+    $ChkBCD.IsChecked                 = $false
+
+    $ChkGpuVendor.IsChecked           = $false
+    $ChkGameExeGeneric.IsChecked      = $false
+    $ChkNicAdvanced.IsChecked         = $false
+    $ChkOverlayKiller.IsChecked       = $false
+    $ChkSecurityOptional.IsChecked    = $false
+    $ChkVendorCleanup.IsChecked       = $false
+    $ChkValidationReport.IsChecked    = $false
+
+    $ChkGaming.IsChecked              = $false
+    $ChkFortnite.IsChecked            = $false
+
+    $ChkDebloatUsers.IsChecked        = $true
+    $ChkDebloatProvisioned.IsChecked  = $true
+
+    if ($TxtGameExePath) {
+        $TxtGameExePath.Text = ""
+    }
+
+    Set-DebloatSelection -Items @()
+    $TxtStatus.Text = "Modalita GRAND LINE CUSTOM attiva. Modifica le checkbox a piacere."
 }
 
 $RbSafe.Add_Checked({ Set-ModeDisplay; Set-SafePreset })
@@ -2098,21 +2144,39 @@ $BtnDebloatRecommended.Add_Click({ Set-DebloatSelection -Items $RecommendedDeblo
 $BtnDebloatAll.Add_Click({ Set-DebloatSelection -Items @($DebloatBoxes.Keys); $TxtStatus.Text = 'Tutti i debloat selezionati.'
     Update-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
 $BtnDebloatClear.Add_Click({ Set-DebloatSelection -Items @(); $TxtStatus.Text = 'Debloat custom pulito.'
-    Update-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
+    dUpdate-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
 
-$BtnRestoreBackup.Add_Click({
-    Ensure-RunAsAdmin
-    Initialize-TedeWorkspace
-    $items = Restore-LatestTedeBackup
-    foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
-    $TxtOutput.Text = ($items -join [Environment]::NewLine)
-})
+if ($BtnRestoreBackup) {
+    $BtnRestoreBackup.Add_Click({
+        Ensure-RunAsAdmin
+        Initialize-TedeWorkspace
+        $items = Restore-LatestTedeBackup
+        foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
 
-$BtnOpenData.Add_Click({
-    Initialize-TedeWorkspace
-    Open-TedePath -Path $script:TedeDataRoot
-})
+        if ($TxtOutput) {
+            $TxtOutput.Text = ($items -join [Environment]::NewLine)
+        }
+        elseif ($TxtStatus) {
+            $TxtStatus.Text = 'Restore completato. Controlla log e backup.'
+        }
+    })
+}
 
+if ($BtnRestoreBackup) {
+    $BtnRestoreBackup.Add_Click({
+        Ensure-RunAsAdmin
+        Initialize-TedeWorkspace
+        $items = Restore-LatestTedeBackup
+        foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
+
+        if ($TxtOutput) {
+            $TxtOutput.Text = ($items -join [Environment]::NewLine)
+        }
+        elseif ($TxtStatus) {
+            $TxtStatus.Text = 'Restore completato. Controlla il log/output.'
+        }
+    })
+}
 $BtnApply.Add_Click({
     $done = New-Object System.Collections.Generic.List[string]
     $selected = New-Object System.Collections.Generic.List[string]
