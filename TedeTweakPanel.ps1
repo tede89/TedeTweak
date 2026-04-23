@@ -1078,6 +1078,314 @@ function Apply-FortniteSpecific {
 
 Ensure-RunAsAdmin
 
+
+function Apply-NvidiaGpuTweaks {
+    $applied = @()
+    $nvPaths = @(
+        'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm',
+        'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global',
+        'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak'
+    )
+    foreach ($p in $nvPaths) {
+        if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
+    }
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak' -Name 'DisplayPowerSaving' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA DisplayPowerSaving = 0'
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global' -Name 'EnableMidBufferPreemption' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA MidBufferPreemption = 0'
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global' -Name 'EnableMidGfxPreemptionVGPU' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA MidGfxPreemption = 0'
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global' -Name 'RMEdgeLpwrEnable' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA RMEdgeLpwr = 0'
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm' -Name 'EnableResizableBar' -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'NVIDIA ResizableBar = 1'
+    return $applied
+}
+
+function Apply-AmdGpuTweaks {
+    $applied = @()
+    $amdPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\AMD'
+    if (-not (Test-Path $amdPath)) { New-Item -Path $amdPath -Force | Out-Null }
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\AMD' -Name 'EnableUlps' -Value 0 -Type DWord -Force | Out-Null
+    $applied += 'AMD EnableUlps = 0'
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\AMD' -Name 'PP_SclkDeepSleepDisable' -Value 1 -Type DWord -Force | Out-Null
+    $applied += 'AMD SclkDeepSleep disabled'
+    return $applied
+}
+
+function Apply-GpuTweaksAuto {
+    $applied = @()
+    $vendor = Get-GpuVendor
+    $applied += "GPU rilevato: $vendor"
+    switch ($vendor) {
+        'NVIDIA' { $applied += Apply-NvidiaGpuTweaks }
+        'AMD'    { $applied += Apply-AmdGpuTweaks }
+        default  { $applied += 'SKIP GPU tweaks: vendor non supportato' }
+    }
+    return $applied
+}
+
+function Apply-PagefileFixed {
+    $applied = @()
+    try {
+        $ram = (Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1MB
+        $ramMB = [int]$ram
+        $cs = Get-CimInstance Win32_ComputerSystem
+        $cs.AutomaticManagedPagefile = $false
+        $cs.Put() | Out-Null
+        $pf = Get-CimInstance Win32_PageFileSetting -ErrorAction SilentlyContinue
+        if ($pf) {
+            $pf.InitialSize = $ramMB
+            $pf.MaximumSize = $ramMB
+            $pf.Put() | Out-Null
+            $applied += "Pagefile fisso: $ramMB MB"
+        } else {
+            New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name='C:\pagefile.sys';InitialSize=$ramMB;MaximumSize=$ramMB} | Out-Null
+            $applied += "Pagefile creato fisso: $ramMB MB"
+        }
+    } catch {
+        $applied += 'SKIP Pagefile: ' + $_.Exception.Message
+    }
+    return $applied
+}
+
+function Apply-WindowsUpdateDisable {
+    $applied = @()
+    try {
+        Stop-Service -Name 'wuauserv' -Force -ErrorAction SilentlyContinue
+        Set-Service -Name 'wuauserv' -StartupType Disabled | Out-Null
+        $applied += 'Windows Update disabilitato'
+        Stop-Service -Name 'UsoSvc' -Force -ErrorAction SilentlyContinue
+        Set-Service -Name 'UsoSvc' -StartupType Disabled | Out-Null
+        $applied += 'UsoSvc disabilitato'
+        Stop-Service -Name 'DoSvc' -Force -ErrorAction SilentlyContinue
+        Set-Service -Name 'DoSvc' -StartupType Disabled | Out-Null
+        $applied += 'Delivery Optimization disabilitato'
+        Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name 'NoAutoUpdate' -Value 1 -Type DWord -Force | Out-Null
+        $applied += 'NoAutoUpdate policy = 1'
+    } catch {
+        $applied += 'SKIP WUpdate: ' + $_.Exception.Message
+    }
+    return $applied
+}
+
+function Apply-TelemetryAdvanced {
+    $applied = @()
+    $telKeys = @(
+        @{ Path='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack'; Name='DiagTrackAuthorization'; Value=0 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'; Name='AllowTelemetry'; Value=0 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'; Name='DoNotShowFeedbackNotifications'; Value=1 },
+        @{ Path='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Privacy'; Name='TailoredExperiencesWithDiagnosticDataEnabled'; Value=0 },
+        @{ Path='HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Privacy'; Name='TailoredExperiencesWithDiagnosticDataEnabled'; Value=0 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name='DisableInventory'; Value=1 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name='DisablePCA'; Value=1 },
+        @{ Path='HKLM:\SOFTWARE\Microsoft\SQMClient\Windows'; Name='CEIPEnable'; Value=0 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\MRT'; Name='DontReportInfectionInformation'; Value=1 },
+        @{ Path='HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo'; Name='Enabled'; Value=0 },
+        @{ Path='HKCU:\SOFTWARE\Microsoft\Input\TIPC'; Name='Enabled'; Value=0 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\InputPersonalization'; Name='RestrictImplicitInkCollection'; Value=1 },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\InputPersonalization'; Name='RestrictImplicitTextCollection'; Value=1 },
+        @{ Path='HKCU:\SOFTWARE\Microsoft\Personalization\Settings'; Name='AcceptedPrivacyPolicy'; Value=0 },
+        @{ Path='HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\SettingSync'; Name='SyncPolicy'; Value=5 }
+    )
+    foreach ($k in $telKeys) {
+        try {
+            if (-not (Test-Path $k.Path)) { New-Item -Path $k.Path -Force | Out-Null }
+            Set-ItemProperty -Path $k.Path -Name $k.Name -Value $k.Value -Type DWord -Force | Out-Null
+            $applied += "Telemetria: $($k.Name) = $($k.Value)"
+        } catch { $applied += "SKIP $($k.Name)" }
+    }
+    return $applied
+}
+
+function Apply-ETWOff {
+    $applied = @()
+    $etwSessions = @('DiagLog','Diagtrack-Listener','NOOLAS','WiFiSession')
+    foreach ($s in $etwSessions) {
+        try {
+            & logman.exe stop $s -ets 2>$null | Out-Null
+            $applied += "ETW session stopped: $s"
+        } catch { $applied += "SKIP ETW $s" }
+    }
+    try {
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener' -Name 'Start' -Value 0 -Type DWord -Force | Out-Null
+        $applied += 'AutoLogger-Diagtrack disabled'
+    } catch { $applied += 'SKIP AutoLogger-Diagtrack' }
+    return $applied
+}
+
+function Apply-InterruptAffinity {
+    $applied = @()
+    try {
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.HardwareInterface } | Select-Object -First 1
+        if ($adapter) {
+            $path = "HKLM:\SYSTEM\CurrentControlSet\Enum\$($adapter.DeviceID)\Device Parameters\Interrupt Management\Affinity Policy"
+            if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+            Set-ItemProperty -Path $path -Name 'DevicePolicy' -Value 4 -Type DWord -Force | Out-Null
+            Set-ItemProperty -Path $path -Name 'AssignmentSetOverride' -Value ([byte[]](0x04)) -Type Binary -Force | Out-Null
+            $applied += "IRQ affinity pinned su core 2: $($adapter.Name)"
+        }
+    } catch { $applied += 'SKIP Interrupt Affinity: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-ShaderCacheClean {
+    $applied = @()
+    $paths = @(
+        "$env:LOCALAPPDATA\NVIDIA\DXCache",
+        "$env:LOCALAPPDATA\NVIDIA\GLCache",
+        "$env:LOCALAPPDATA\D3DSCache",
+        "$env:LOCALAPPDATA\AMD\DxCache",
+        "$env:APPDATA\NVIDIA\ComputeCache"
+    )
+    foreach ($p in $paths) {
+        if (Test-Path $p) {
+            Remove-Item -Path "$p\*" -Recurse -Force -ErrorAction SilentlyContinue
+            $applied += "Shader cache pulita: $p"
+        }
+    }
+    return $applied
+}
+
+function Apply-DwmFrameInterval {
+    $applied = @()
+    try {
+        Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value 0xffffffff -Type DWord -Force | Out-Null
+        Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value 0 -Type DWord -Force | Out-Null
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\DWMApps' -Name 'dwmframeinterval' -Value 6 -Type DWord -Force -ErrorAction SilentlyContinue | Out-Null
+        $applied += 'DWM frame interval ottimizzato'
+        powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR LATENCYHINTPERF1 99 2>$null | Out-Null
+        $applied += 'CPU latency hint perf = 99'
+    } catch { $applied += 'SKIP DWM frame: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-CoreParkingOff {
+    $applied = @()
+    try {
+        $paths = @(
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583',
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\ea062031-0e34-4ff1-9b6d-eb1059334028'
+        )
+        foreach ($p in $paths) {
+            if (Test-Path $p) {
+                Set-ItemProperty -Path $p -Name 'Attributes' -Value 2 -Type DWord -Force | Out-Null
+                $applied += "Core Parking policy unlocked"
+            }
+        }
+        powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100 2>$null | Out-Null
+        powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100 2>$null | Out-Null
+        powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMAXCORES 100 2>$null | Out-Null
+        $applied += 'Core Parking: min=100% max=100%'
+    } catch { $applied += 'SKIP Core Parking: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-SpectreMitigationsOff {
+    $applied = @()
+    try {
+        bcdedit /set nx AlwaysOff 2>$null | Out-Null
+        $applied += 'BCD nx = AlwaysOff'
+        bcdedit /set bootmenupolicy Legacy 2>$null | Out-Null
+        $applied += 'BCD bootmenupolicy = Legacy'
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverride' -Value 3 -Type DWord -Force | Out-Null
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverrideMask' -Value 3 -Type DWord -Force | Out-Null
+        $applied += 'Spectre/Meltdown mitigations OFF'
+    } catch { $applied += 'SKIP Spectre: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-RSSQueuePinning {
+    $applied = @()
+    try {
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.HardwareInterface } | Select-Object -First 1
+        if ($adapter) {
+            Set-NetAdapterRSS -Name $adapter.Name -NumberOfReceiveQueues 4 -MaxQueuesPerCore 1 -ErrorAction SilentlyContinue | Out-Null
+            $applied += "RSS queue pinning (4 queues) su $($adapter.Name)"
+        }
+    } catch { $applied += 'SKIP RSS: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-NVMeLatency {
+    $applied = @()
+    $keys = @('storsvc','StorAHCI','storahci','storport')
+    foreach ($k in $keys) {
+        $path = "HKLM:\SYSTEM\CurrentControlSet\Services\$k"
+        if (Test-Path $path) {
+            Set-ItemProperty -Path $path -Name 'Start' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue | Out-Null
+            $applied += "$k Start = 0"
+        }
+    }
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\storport\Parameters' -Name 'EnableIdlePowerManagement' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue | Out-Null
+    $applied += 'StorPort IdlePowerManagement = 0'
+    return $applied
+}
+
+function Apply-DPCTweaks {
+    $applied = @()
+    try {
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'IRQ8Priority' -Value 1 -Type DWord -Force | Out-Null
+        $applied += 'IRQ8 priority = 1'
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'IRQ16Priority' -Value 1 -Type DWord -Force | Out-Null
+        $applied += 'IRQ16 priority = 1'
+        if (-not (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\TimedInterruptMiniportDriver')) {
+            New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\TimedInterruptMiniportDriver' -Force | Out-Null
+        }
+        $applied += 'DPC latency tweaks applicati'
+    } catch { $applied += 'SKIP DPC: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-PrefetchOff {
+    $applied = @()
+    try {
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters' -Name 'EnablePrefetcher' -Value 0 -Type DWord -Force | Out-Null
+        $applied += 'EnablePrefetcher = 0'
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters' -Name 'EnableSuperfetch' -Value 0 -Type DWord -Force | Out-Null
+        $applied += 'EnableSuperfetch = 0'
+    } catch { $applied += 'SKIP Prefetch: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Apply-TaskOffload {
+    $applied = @()
+    try {
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'DisableTaskOffload' -Value 1 -Type DWord -Force | Out-Null
+        $applied += 'DisableTaskOffload = 1'
+    } catch { $applied += 'SKIP TaskOffload: ' + $_.Exception.Message }
+    return $applied
+}
+
+function Set-TimerResolution {
+    $applied = @()
+    try {
+        # Crea un piccolo script che usa winmm per mantenere 1ms
+        $timerScript = @'
+using System;
+using System.Runtime.InteropServices;
+class TimerRes {
+    [DllImport("winmm.dll")] static extern int timeBeginPeriod(int t);
+    static void Main() { timeBeginPeriod(1); Console.WriteLine("Timer 1ms attivo - chiudi questa finestra per ripristinare"); Console.ReadLine(); }
+}
+'@
+        $outPath = Join-Path $env:TEMP 'TedeTimer.cs'
+        $exePath = Join-Path $env:TEMP 'TedeTimer.exe'
+        Set-Content -Path $outPath -Value $timerScript -Encoding UTF8
+        $csc = Get-ChildItem "C:\Windows\Microsoft.NET\Framework64" -Filter csc.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -Last 1
+        if ($csc) {
+            & $csc.FullName /out:$exePath $outPath 2>$null | Out-Null
+            if (Test-Path $exePath) {
+                Start-Process -FilePath $exePath -WindowStyle Normal
+                $applied += 'TedeTimer.exe avviato (tieni aperto durante il gaming)'
+            }
+        } else {
+            $applied += 'SKIP TedeTimer: .NET compiler non trovato'
+        }
+    } catch { $applied += 'SKIP Timer: ' + $_.Exception.Message }
+    return $applied
+}
+
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1252,7 +1560,14 @@ Ensure-RunAsAdmin
                                     <CheckBox Name="ChkPowerAdvanced" Content="Power advanced (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                     <CheckBox Name="ChkScheduler" Content="Scheduler / MMCSS (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                     <CheckBox Name="ChkInput" Content="Input tweaks (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkUsb" Content="USB low latency (reale)" Foreground="#F7E7C1"/>
+                                    <CheckBox Name="ChkUsb
+                                    <CheckBox Name="ChkGpuTweaks" Content="GPU driver tweaks (NVIDIA/AMD)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkPagefile" Content="Pagefile fisso RAM size" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkWUpdateOff" Content="Windows Update OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkETWOff" Content="ETW Telemetry OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkShaderClean" Content="Shader cache cleanup" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkTimerRes" Content="Timer Resolution 1ms" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkSpectreOff" Content="Spectre/Meltdown OFF (RISCHIO)" Foreground="#F7E7C1" Margin="0,0,0,4"/>" Content="USB low latency (reale)" Foreground="#F7E7C1"/>
                                 </StackPanel>
                             </Border>
 
@@ -1363,6 +1678,13 @@ $BtnNavInfo = $window.FindName('BtnNavInfo')
 $RbSafe = $window.FindName('RbSafe')
 $RbInsane = $window.FindName('RbInsane')
 $RbCustom = $window.FindName('RbCustom')
+$ChkGpuTweaks = $window.FindName('ChkGpuTweaks')
+$ChkPagefile = $window.FindName('ChkPagefile')
+$ChkWUpdateOff = $window.FindName('ChkWUpdateOff')
+$ChkETWOff = $window.FindName('ChkETWOff')
+$ChkShaderClean = $window.FindName('ChkShaderClean')
+$ChkTimerRes = $window.FindName('ChkTimerRes')
+$ChkSpectreOff = $window.FindName('ChkSpectreOff')
 $TxtModeLabel = $window.FindName('TxtModeLabel')
 $TxtModeChip = $window.FindName('TxtModeChip')
 $ModeChipBorder = $window.FindName('ModeChipBorder')
@@ -1516,6 +1838,16 @@ function Set-SafePreset {
     $ChkFortnite.IsChecked = $false
     Set-DebloatSelection -Items $RecommendedDebloat
     $TxtStatus.Text = 'Preset GEAR 2 caricato.'
+
+
+    $applied += Apply-GpuTweaksAuto
+    $applied += Apply-PagefileFixed
+    $applied += Apply-WindowsUpdateDisable
+    $applied += Apply-TelemetryAdvanced
+    $applied += Apply-PrefetchOff
+    $applied += Apply-NVMeLatency
+    $applied += Apply-DPCTweaks
+    $applied += Apply-TaskOffload
 }
 
 function Set-InsanePreset {
@@ -1549,9 +1881,32 @@ function Set-InsanePreset {
     $ChkFortnite.IsChecked = $true
     Set-DebloatSelection -Items $RecommendedDebloat
     $TxtStatus.Text = 'Preset GEAR 4 caricato.'
+
+
+    $applied += Apply-GpuTweaksAuto
+    $applied += Apply-PagefileFixed
+    $applied += Apply-WindowsUpdateDisable
+    $applied += Apply-TelemetryAdvanced
+    $applied += Apply-ETWOff
+    $applied += Apply-InterruptAffinity
+    $applied += Apply-ShaderCacheClean
+    $applied += Apply-DwmFrameInterval
+    $applied += Apply-CoreParkingOff
+    $applied += Apply-SpectreMitigationsOff
+    $applied += Apply-RSSQueuePinning
+    $applied += Apply-NVMeLatency
+    $applied += Apply-DPCTweaks
+    $applied += Apply-TaskOffload
 }
 
 function Set-CustomPreset {
+    if ($ChkGpuTweaks.IsChecked) { $done += Apply-GpuTweaksAuto }
+    if ($ChkPagefile.IsChecked) { $done += Apply-PagefileFixed }
+    if ($ChkWUpdateOff.IsChecked) { $done += Apply-WindowsUpdateDisable }
+    if ($ChkETWOff.IsChecked) { $done += Apply-ETWOff }
+    if ($ChkShaderClean.IsChecked) { $done += Apply-ShaderCacheClean }
+    if ($ChkTimerRes.IsChecked) { $done += Set-TimerResolution }
+    if ($ChkSpectreOff.IsChecked) { $done += Apply-SpectreMitigationsOff }
     $ChkGpuVendor.IsChecked = $false
     $ChkGameExeGeneric.IsChecked = $false
     $ChkNicAdvanced.IsChecked = $false
