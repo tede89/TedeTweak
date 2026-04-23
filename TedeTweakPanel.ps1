@@ -1081,90 +1081,173 @@ Ensure-RunAsAdmin
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="One Piece Performance Panel"
-        Height="770"
-        Width="1080"
+        Title="TedeTweak Grand Line Console"
+        Height="820"
+        Width="1240"
         WindowStartupLocation="CenterScreen"
-        Background="#08131E"
-        Foreground="#F8E7B6">
+        Background="#07111A"
+        Foreground="#F7E7C1"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <SolidColorBrush x:Key="BgMain" Color="#07111A"/>
+        <SolidColorBrush x:Key="BgPanel" Color="#120E0A"/>
+        <SolidColorBrush x:Key="BgPanel2" Color="#1E1510"/>
+        <SolidColorBrush x:Key="BgPanel3" Color="#241811"/>
+        <SolidColorBrush x:Key="Gold" Color="#D6A84F"/>
+        <SolidColorBrush x:Key="GoldSoft" Color="#F4D28C"/>
+        <SolidColorBrush x:Key="Parchment" Color="#FFF1CC"/>
+        <SolidColorBrush x:Key="TextSoft" Color="#E8D6AE"/>
+        <SolidColorBrush x:Key="Muted" Color="#BDAA84"/>
+        <SolidColorBrush x:Key="RedCaptain" Color="#8C2F20"/>
+        <SolidColorBrush x:Key="RedYonko" Color="#5A1E18"/>
+        <SolidColorBrush x:Key="SeaBlue" Color="#12344A"/>
+        <SolidColorBrush x:Key="SafeTeal" Color="#0F766E"/>
+
+        <Style TargetType="Border" x:Key="PanelCard">
+            <Setter Property="Background" Value="{StaticResource BgPanel2}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Gold}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style TargetType="Button" x:Key="NavButtonStyle">
+            <Setter Property="Height" Value="52"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Background" Value="#20150E"/>
+            <Setter Property="Foreground" Value="{StaticResource Parchment}"/>
+            <Setter Property="BorderBrush" Value="#8A6735"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style TargetType="Button" x:Key="ActionButtonStyle">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Padding" Value="18,8"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+            <Setter Property="Foreground" Value="{StaticResource Parchment}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Gold}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextSoft}"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextSoft}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="SectionTitle">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource Parchment}"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="250"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="#14100C" BorderBrush="#8A6735" BorderThickness="0,0,1,0">
-            <StackPanel Margin="14">
-                <TextBlock Text="☠ One Piece"
-                           FontSize="24"
-                           FontWeight="Bold"
-                           Foreground="#F4D28C"
-                           Margin="0,0,0,4"/>
-                <TextBlock Text="Performance Panel"
-                           FontSize="21"
-                           FontWeight="Bold"
-                           Foreground="#FFF1CC"
-                           Margin="0,0,0,18"/>
+        <Border Grid.Column="0" Background="#120D09" BorderBrush="#7D6233" BorderThickness="0,0,1,0">
+            <Grid Margin="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <Button Name="BtnNavPreset" Content="Crew Routes" Height="44" Margin="0,0,0,10" Background="#3A2416" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
-                <Button Name="BtnNavTweaks" Content="Ship Systems" Height="44" Margin="0,0,0,10" Background="#20150E" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
-                <Button Name="BtnNavInfo" Content="Captain Log" Height="44" Margin="0,0,0,10" Background="#20150E" Foreground="#F7E7C1" BorderBrush="#8A6735"/>
-            </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="TEDETWEAK" FontSize="14" FontWeight="Bold" Foreground="#D6A84F"/>
+                    <TextBlock Text="Grand Line Console" FontSize="24" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,2,0,4"/>
+                    <TextBlock Text="Captain-grade optimization deck" Foreground="#BDAA84" FontSize="12" Margin="0,0,0,18"/>
+
+                    <Button Name="BtnNavPreset" Style="{StaticResource NavButtonStyle}" Content="Crew Routes&#x0a;Preset di navigazione" Background="#3A2416"/>
+                    <Button Name="BtnNavTweaks" Style="{StaticResource NavButtonStyle}" Content="Ship Systems&#x0a;Moduli e override"/>
+                    <Button Name="BtnNavInfo" Style="{StaticResource NavButtonStyle}" Content="Captain Log&#x0a;Report e stato nave"/>
+                </StackPanel>
+
+                <Border Grid.Row="2" Background="#1C140E" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="10" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="Captain Intel" FontSize="15" FontWeight="Bold" Foreground="#F4D28C" Margin="0,0,0,8"/>
+                        <TextBlock Text="Route: EAST BLUE" Name="TxtIntelRoute" Foreground="#FFF1CC" Margin="0,0,0,4"/>
+                        <TextBlock Text="Risk: Controlled" Name="TxtIntelRisk" Foreground="#D9C7A0" Margin="0,0,0,4"/>
+                        <TextBlock Text="Profile: Competitive Windows deck" Foreground="#BDAA84" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </Border>
 
-        <Grid Grid.Column="1" Margin="14">
+        <Grid Grid.Column="1" Margin="16">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="One Piece Performance Panel" FontSize="28" FontWeight="Bold" Foreground="#FFF1CC"/>
-                    <TextBlock Name="TxtModeLabel" Text="Preset: Gear 2 - Safe Competitive" FontSize="13" Margin="0,4,0,0" Foreground="#D9C7A0"/>
-                </StackPanel>
-                <Border Name="ModeChipBorder" Grid.Column="1" Background="#B63A2B" BorderBrush="#D6A84F" BorderThickness="1" CornerRadius="14" Padding="14,7" VerticalAlignment="Center">
-                    <TextBlock Name="TxtModeChip" Text="Gear 2 - Safe Competitive" FontWeight="SemiBold" Foreground="#FFF4DA"/>
-                </Border>
-            </Grid>
+            <Border Grid.Row="0" Background="#120E0A" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="14" Padding="18" Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-            <TabControl Name="MainTab" Grid.Row="1" Background="#14100C" BorderBrush="#8A6735">
+                    <StackPanel>
+                        <TextBlock Text="TedeTweak Grand Line Console" FontSize="30" FontWeight="Bold" Foreground="#FFF1CC"/>
+                        <TextBlock Text="One Piece inspired command deck for competitive Windows optimization" Foreground="#D9C7A0" Margin="0,6,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Name="ModeChipBorder" Background="#8C2F20" BorderBrush="#D6A84F" BorderThickness="1" CornerRadius="18" Padding="14,7" Margin="0,0,10,0">
+                            <TextBlock Name="TxtModeChip" Text="EAST BLUE" Foreground="#FFF4DA" FontWeight="Bold"/>
+                        </Border>
+                        <Border Background="#16212B" BorderBrush="#38566B" BorderThickness="1" CornerRadius="18" Padding="12,7">
+                            <TextBlock Text="Grand Line Ready" Foreground="#C8D5DE" FontWeight="SemiBold"/>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <TabControl Name="MainTab" Grid.Row="1" Background="#120E0A" BorderBrush="#8A6735">
                 <TabItem Header="Crew Routes">
-                    <Grid Background="#14100C" Margin="8">
+                    <Grid Background="#120E0A" Margin="10">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="330"/>
+                            <ColumnDefinition Width="340"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                        <StackPanel Grid.Column="0" Margin="0,0,14,0">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Crew Route" FontSize="15" FontWeight="Bold" Foreground="#F4D28C" Margin="0,0,0,8"/>
-                                    <RadioButton Name="RbSafe" Content="East Blue (Consigliato)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
-                                    <RadioButton Name="RbInsane" Content="Yonko Mode (Tryhard)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
-                                    <RadioButton Name="RbCustom" Content="Grand Line Custom (manuale)" Margin="0,0,0,0" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Crew Route" Style="{StaticResource SectionTitle}"/>
+                                    <RadioButton Name="RbSafe" Content="East Blue — consigliato" IsChecked="True"/>
+                                    <RadioButton Name="RbInsane" Content="Yonko Mode — tryhard"/>
+                                    <RadioButton Name="RbCustom" Content="Grand Line Custom — manuale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Configurazione hardware" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
-                                    <TextBlock Text="Rete" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Hardware manifest" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="Rete" Foreground="#E8D6AE" Margin="0,0,0,4"/>
                                     <ComboBox Name="CmbNetMode" SelectedIndex="0" Margin="0,0,0,10">
-                                        <ComboBoxItem Content="LAN / Ethernet"/>
+                                        <ComboBoxItem Content="LAN Ethernet"/>
                                         <ComboBoxItem Content="Wi-Fi"/>
                                     </ComboBox>
-                                    <TextBlock Text="CPU" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <TextBlock Text="CPU" Foreground="#E8D6AE" Margin="0,0,0,4"/>
                                     <ComboBox Name="CmbCpu" SelectedIndex="0" Margin="0,0,0,10">
                                         <ComboBoxItem Content="AMD Ryzen"/>
                                         <ComboBoxItem Content="Intel Core"/>
                                     </ComboBox>
-                                    <TextBlock Text="GPU" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <TextBlock Text="GPU" Foreground="#E8D6AE" Margin="0,0,0,4"/>
                                     <ComboBox Name="CmbGpu" SelectedIndex="1">
                                         <ComboBoxItem Content="AMD Radeon"/>
                                         <ComboBoxItem Content="NVIDIA GeForce"/>
@@ -1174,161 +1257,153 @@ Ensure-RunAsAdmin
                             </Border>
                         </StackPanel>
 
-                        <Border Grid.Column="1" Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="14">
-                            <StackPanel>
-                                <TextBlock Text="Crew Route Description" FontSize="16" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
-                                <TextBlock Name="TxtPresetDescription" Text="East Blue: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,12"/>
-                                <TextBlock Text="Gear 2 - Safe Competitive" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                <TextBlock Text="- servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, background cleanup safe e gaming common." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,6"/>
-                                <TextBlock Text="Gear 5 - Max Peak 15%" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
-                                <TextBlock Text="- aggiunge debloat aggressive, power advanced, scheduler, input, USB, memory aggressive e Fortnite specific." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,6"/>
-                                <TextBlock Text="GRAND LINE CUSTOM" FontWeight="Bold" Foreground="#F7E7C1" Margin="0,4,0,4"/>
-                                <TextBlock Text="- usa solo le checkbox selezionate nel tab Tweaks, incluso debloat extreme custom." TextWrapping="Wrap" Foreground="#F7E7C1"/>
-                            </StackPanel>
-                        </Border>
+                        <Grid Grid.Column="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <UniformGrid Grid.Row="0" Columns="3" Margin="0,0,0,12">
+                                <Border Margin="0,0,10,0" Background="#12344A" BorderBrush="#4FA4C2" BorderThickness="1" CornerRadius="14" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="GEAR 2" FontSize="20" FontWeight="Bold" Foreground="#FFF1CC"/>
+                                        <TextBlock Text="Safe competitive route" Foreground="#BFE9E3" Margin="0,4,0,10"/>
+                                        <TextBlock Text="Servizi base, gaming common, memory lite, cleanup e stabilità." TextWrapping="Wrap" Foreground="#E5F4F2"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Margin="0,0,10,0" Background="#8C2F20" BorderBrush="#E7B45F" BorderThickness="1" CornerRadius="14" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="GEAR 4" FontSize="20" FontWeight="Bold" Foreground="#FFF1CC"/>
+                                        <TextBlock Text="Aggressive battle route" Foreground="#FFD8BD" Margin="0,4,0,10"/>
+                                        <TextBlock Text="Più spinta su scheduler, power, cleanup e moduli competitivi." TextWrapping="Wrap" Foreground="#FFF1E6"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Background="#4B1A15" BorderBrush="#D6A84F" BorderThickness="1" CornerRadius="14" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="GEAR 5" FontSize="20" FontWeight="Bold" Foreground="#FFF1CC"/>
+                                        <TextBlock Text="Peak and experimental" Foreground="#F2C7B8" Margin="0,4,0,10"/>
+                                        <TextBlock Text="Massima spinta, profilo più rischioso, solo per test mirati." TextWrapping="Wrap" Foreground="#FEE9DE"/>
+                                    </StackPanel>
+                                </Border>
+                            </UniformGrid>
+
+                            <Border Grid.Row="1" Background="#1E1510" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Route Description" FontSize="17" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
+                                    <TextBlock Name="TxtPresetDescription" Grid.Row="1" Text="East Blue: servizi base, debloat safe, power advanced, scheduler, input, USB, memory lite, cleanup pro, storage, display, cache, GPU helper, NIC advanced, overlay killer, validation report e gaming common." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,14"/>
+                                    <Grid Grid.Row="2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="260"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,14,0">
+                                            <TextBlock Text="Captain notes" FontSize="15" FontWeight="Bold" Foreground="#F4D28C" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Questa console mantiene la struttura tecnica del pannello originale, ma presenta i preset come vere rotte operative con identità visiva distinta e migliore leggibilità." TextWrapping="Wrap" Foreground="#D9C7A0"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Background="#241811" BorderBrush="#6B4D28" BorderThickness="1" CornerRadius="10" Padding="12">
+                                            <StackPanel>
+                                                <TextBlock Text="Battle telemetry" FontSize="14" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,8"/>
+                                                <TextBlock Text="Risk level: Medium" Foreground="#E8D6AE" Margin="0,0,0,4"/>
+                                                <TextBlock Text="Modules in route: 14" Foreground="#E8D6AE" Margin="0,0,0,4"/>
+                                                <TextBlock Text="Recommended use: daily competitive" Foreground="#BDAA84" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </TabItem>
 
                 <TabItem Header="Ship Systems">
-                    <ScrollViewer Background="#14100C">
-                        <StackPanel Margin="8">
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                    <ScrollViewer Background="#120E0A">
+                        <StackPanel Margin="10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Ship Services and Cargo Cleanup" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Servizi Windows e rimozione bloatware selettiva." Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkServicesBase" Content="Services base (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkDebloatSafe" Content="Debloat safe (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkDebloatAggressive" Content="Debloat aggressive (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkDebloatExtreme" Content="Debloat extreme custom (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Hull Services &amp; Cargo Purge" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="Servizi Windows e rimozione bloatware selettiva." Foreground="#D9C7A0" Margin="0,0,0,8"/>
+                                    <CheckBox Name="ChkServicesBase" Content="Services base reale"/>
+                                    <CheckBox Name="ChkDebloatSafe" Content="Debloat safe reale"/>
+                                    <CheckBox Name="ChkDebloatAggressive" Content="Debloat aggressive reale"/>
+                                    <CheckBox Name="ChkDebloatExtreme" Content="Debloat extreme custom reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Debloat extreme custom" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Seleziona manualmente i pacchetti da rimuovere. Le opzioni sotto vengono usate solo se il toggle Debloat extreme custom e attivo." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-
-                                    <WrapPanel Margin="0,0,0,10">
-                                        <Button Name="BtnDebloatRecommended" Content="Select recommended" Width="140" Height="30" Margin="0,0,8,0" Background="#4A2E1B" Foreground="#FFF1CC" BorderBrush="#9A7A49"/>
-                                        <Button Name="BtnDebloatAll" Content="Select all" Width="110" Height="30" Margin="0,0,8,0" Background="#4A2E1B" Foreground="#FFF1CC" BorderBrush="#9A7A49"/>
-                                        <Button Name="BtnDebloatClear" Content="Clear all" Width="110" Height="30" Background="#4A2E1B" Foreground="#FFF1CC" BorderBrush="#9A7A49"/>
-                                    </WrapPanel>
-
-                                    <CheckBox Name="ChkDebloatUsers" Content="Rimuovi per utenti esistenti" IsChecked="True" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkDebloatProvisioned" Content="Rimuovi anche provisioning per nuovi utenti" IsChecked="True" Foreground="#F7E7C1" Margin="0,0,0,10"/>
-
-                                    <UniformGrid Columns="3">
-                                        <CheckBox Name="DbClipchamp" Content="Clipchamp" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbBingNews" Content="Bing News" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbGetHelp" Content="Get Help" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbGetStarted" Content="Get Started" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbOfficeHub" Content="Office Hub" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbSolitaire" Content="Solitaire" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbPeople" Content="People" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbSkype" Content="Skype" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbTeams" Content="Teams Consumer" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbXboxTCUI" Content="Xbox TCUI" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbXboxApp" Content="Xbox App" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbXboxGameOverlay" Content="Xbox Game Overlay" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbXboxGamingOverlay" Content="Xbox Gaming Overlay" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbXboxIdentity" Content="Xbox Identity Provider" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbXboxSpeech" Content="Xbox Speech To Text" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbPhoneLink" Content="Phone Link" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbGroove" Content="Groove Music" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbMovies" Content="Movies and TV" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbTodo" Content="To Do" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbFamily" Content="Family" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbQuickAssist" Content="Quick Assist" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbDevHome" Content="Dev Home" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbFeedbackHub" Content="Feedback Hub" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbMaps" Content="Maps" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbCamera" Content="Camera" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbSoundRecorder" Content="Sound Recorder" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbAlarms" Content="Alarms" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                        <CheckBox Name="DbMailCalendar" Content="Mail and Calendar" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    </UniformGrid>
+                                    <TextBlock Text="Engine Core" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="Blocchi per input delay, reattività e frametime più stabili." Foreground="#D9C7A0" Margin="0,0,0,8"/>
+                                    <CheckBox Name="ChkPowerAdvanced" Content="Power advanced reale"/>
+                                    <CheckBox Name="ChkScheduler" Content="Scheduler MMCSS reale"/>
+                                    <CheckBox Name="ChkInput" Content="Input tweaks reale"/>
+                                    <CheckBox Name="ChkUsb" Content="USB low latency reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Blocchi per input delay, reattivita e frametime piu stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkPowerAdvanced" Content="Power advanced (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkScheduler" Content="Scheduler / MMCSS (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkInput" Content="Input tweaks (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkUsb" Content="USB low latency (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Memory Deck" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkMemoryLite" Content="Memory lite reale"/>
+                                    <CheckBox Name="ChkMemoryAggressive" Content="Memory aggressive reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Memory" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Tweak memoria lite o aggressivi." Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkMemoryLite" Content="Memory lite (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkMemoryAggressive" Content="Memory aggressive (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Silent Deck Cleanup" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkCleanupSafe" Content="Background cleanup safe reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Background cleanup" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Riduce esperienze Windows e processi non essenziali senza toccare app utente comuni." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkCleanupSafe" Content="Background cleanup safe (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="System Finish" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkStorage" Content="Storage advanced reale"/>
+                                    <CheckBox Name="ChkDisplay" Content="Display pipeline reale"/>
+                                    <CheckBox Name="ChkCache" Content="Cache cleanup reale"/>
+                                    <CheckBox Name="ChkCleanupPro" Content="Process cleanup safe pro reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="System finish" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Storage, overlay display, pulizia cache e cleanup processi Windows non essenziali." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkStorage" Content="Storage advanced (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkDisplay" Content="Display pipeline (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkCache" Content="Cache cleanup (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkCleanupPro" Content="Process cleanup safe pro (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Battle Network &amp; Timing" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkNetworkCommon" Content="Network common reale"/>
+                                    <CheckBox Name="ChkAdapterMode" Content="Network adapter mode reale"/>
+                                    <CheckBox Name="ChkNicAdvanced" Content="NIC advanced tuning reale"/>
+                                    <CheckBox Name="ChkMsiMode" Content="MSI mode reale"/>
+                                    <CheckBox Name="ChkBcd" Content="BCD timer tweaks reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Network and timer" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Tuning rete competitiva, MSI mode e timer di boot." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkNetworkCommon" Content="Network common (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkNetworkAdapter" Content="Network adapter mode (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkMSI" Content="MSI mode (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkBCD" Content="BCD / timer tweaks (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Cannons, GPU &amp; Targeting" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkGpuHelper" Content="GPU vendor helper reale"/>
+                                    <CheckBox Name="ChkGameExe" Content="Game exe generic reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Cannons and GPU" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Vendor-specific helper tuning e tweak generici per game exe." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkGpuVendor" Content="GPU vendor-specific helper (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkGameExeGeneric" Content="Game EXE generic flags (reale)" Foreground="#F7E7C1" Margin="0,0,0,6"/>
-                                    <TextBlock Text="Percorso game exe" Foreground="#D9C7A0" Margin="0,4,0,4"/>
-                                    <TextBox Name="TxtGameExePath" Text="" Background="#3A2416" Foreground="#FFF1CC" BorderBrush="#334155" Padding="8"/>
+                                    <TextBlock Text="Captain Overrides" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkOverlayKiller" Content="Overlay killer reale"/>
+                                    <CheckBox Name="ChkSecurityOptional" Content="Security optional profile reale"/>
+                                    <CheckBox Name="ChkVendorCleanup" Content="Vendor cleanup reale"/>
+                                    <CheckBox Name="ChkValidationReport" Content="Validation report reale"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                            <Border Style="{StaticResource PanelCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Captain Optional" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="NIC fine tuning, overlay cleanup, security profile e driver/vendor cleanup." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkNicAdvanced" Content="NIC advanced fine tuning (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkOverlayKiller" Content="Overlay killer (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkSecurityOptional" Content="Security optional profile (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkVendorCleanup" Content="Vendor cleanup / telemetry light (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkValidationReport" Content="Validation report (reale)" Foreground="#F7E7C1"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
-                                <StackPanel>
-                                    <TextBlock Text="Battle Mode" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,4"/>
-                                    <TextBlock Text="GameDVR, Game Mode, HAGS e Fortnite." Foreground="#F7E7C1" Margin="0,0,0,8"/>
-                                    <CheckBox Name="ChkGaming" Content="Gaming common (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkFortnite" Content="Fortnite specific (reale)" Foreground="#F7E7C1"/>
+                                    <TextBlock Text="Battle Orders" Style="{StaticResource SectionTitle}"/>
+                                    <CheckBox Name="ChkGamingCommon" Content="Gaming common reale"/>
+                                    <CheckBox Name="ChkFortniteSpecific" Content="Fortnite specific reale"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -1336,23 +1411,68 @@ Ensure-RunAsAdmin
                 </TabItem>
 
                 <TabItem Header="Captain Log">
-                    <Grid Background="#14100C">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
-                            <TextBlock Text="TedeTweak GUI v1.3" FontSize="18" FontWeight="Bold" Foreground="#FFF1CC" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                            <TextBlock Text="Aggiunti blocchi GPU vendor-specific, game EXE generic, NIC advanced, overlay killer, security optional, vendor cleanup e validation report per una v1.3 ancora piu completa." TextWrapping="Wrap" Foreground="#F7E7C1" HorizontalAlignment="Center" TextAlignment="Center"/>
-                        </StackPanel>
+                    <Grid Background="#120E0A" Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <UniformGrid Columns="3" Margin="0,0,0,12">
+                            <Border Margin="0,0,10,0" Background="#1E1510" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="12" Padding="14">
+                                <StackPanel>
+                                    <TextBlock Text="Current Route" FontSize="14" FontWeight="Bold" Foreground="#F4D28C"/>
+                                    <TextBlock Text="East Blue" FontSize="22" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,6,0,4"/>
+                                    <TextBlock Text="Balanced daily route" Foreground="#D9C7A0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="0,0,10,0" Background="#1E1510" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="12" Padding="14">
+                                <StackPanel>
+                                    <TextBlock Text="Hull Status" FontSize="14" FontWeight="Bold" Foreground="#F4D28C"/>
+                                    <TextBlock Text="Ready" FontSize="22" FontWeight="Bold" Foreground="#BFE9E3" Margin="0,6,0,4"/>
+                                    <TextBlock Text="No active warnings" Foreground="#D9C7A0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="#1E1510" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="12" Padding="14">
+                                <StackPanel>
+                                    <TextBlock Text="Battle Risk" FontSize="14" FontWeight="Bold" Foreground="#F4D28C"/>
+                                    <TextBlock Text="Controlled" FontSize="22" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,6,0,4"/>
+                                    <TextBlock Text="Safe competitive window" Foreground="#D9C7A0"/>
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+
+                        <Border Grid.Row="1" Background="#1A130E" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="12" Padding="14">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Navigation records" FontSize="16" FontWeight="Bold" Foreground="#FFF1CC" Margin="0,0,0,10"/>
+                                <TextBox Name="TxtOutput" Grid.Row="1" Background="#0D0A08" Foreground="#E8D6AE" BorderBrush="#6E532A" BorderThickness="1" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" FontFamily="Consolas"/>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </TabItem>
             </TabControl>
 
-            <Grid Grid.Row="2" Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Name="TxtStatus" Grid.Column="0" Text="Pronto." VerticalAlignment="Center" Foreground="#9CA3AF"/>
-                <Button Name="BtnApply" Grid.Column="1" Content="Set Sail / Apply Tweaks" Width="160" Height="36" Background="#B63A2B" Foreground="#FFF4DA" BorderBrush="#D6A84F"/>
-            </Grid>
+            <Border Grid.Row="2" Background="#120E0A" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="14" Padding="14" Margin="0,12,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Name="TxtStatus" Text="Status: nave pronta alla configurazione" Foreground="#FFF1CC" FontWeight="SemiBold"/>
+                        <TextBlock Text="Set sail for optimization" Foreground="#BDAA84" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Name="BtnBackup" Style="{StaticResource ActionButtonStyle}" Background="#12344A" Content="Create Backup"/>
+                        <Button Name="BtnRestore" Style="{StaticResource ActionButtonStyle}" Background="#4C2417" Content="Return to Port"/>
+                        <Button Name="BtnApply" Style="{StaticResource ActionButtonStyle}" Background="#8C2F20" Content="Set Sail"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Window>
@@ -1490,7 +1610,7 @@ function Set-ModeDisplay {
     }
 }
 
-function Set-Gear2Preset {
+function Set-SafePreset {
     $ChkServicesBase.IsChecked = $true
     $ChkDebloatSafe.IsChecked = $true
     $ChkDebloatAggressive.IsChecked = $false
@@ -1520,10 +1640,10 @@ function Set-Gear2Preset {
     $ChkGaming.IsChecked = $true
     $ChkFortnite.IsChecked = $false
     Set-DebloatSelection -Items $RecommendedDebloat
-    $TxtStatus.Text = 'Preset Gear 2 - Safe Competitive caricato.'
+    $TxtStatus.Text = 'Preset EAST BLUE caricato.'
 }
 
-function Set-Gear4Preset {
+function Set-InsanePreset {
     $ChkServicesBase.IsChecked = $true
     $ChkDebloatSafe.IsChecked = $false
     $ChkDebloatAggressive.IsChecked = $true
@@ -1553,10 +1673,10 @@ function Set-Gear4Preset {
     $ChkGaming.IsChecked = $true
     $ChkFortnite.IsChecked = $true
     Set-DebloatSelection -Items $RecommendedDebloat
-    $TxtStatus.Text = 'Preset Gear 5 - Max Peak 15% caricato.'
+    $TxtStatus.Text = 'Preset YONKO MODE caricato.'
 }
 
-function Set-Gear5Preset {
+function Set-CustomPreset {
     $ChkGpuVendor.IsChecked = $false
     $ChkGameExeGeneric.IsChecked = $false
     $ChkNicAdvanced.IsChecked = $false
@@ -1567,9 +1687,9 @@ function Set-Gear5Preset {
     $TxtStatus.Text = 'Modalita GRAND LINE CUSTOM attiva. Modifica le checkbox a piacere.'
 }
 
-$RbSafe.Add_Checked({ Set-ModeDisplay; Set-Gear2Preset })
-$RbInsane.Add_Checked({ Set-ModeDisplay; Set-Gear4Preset })
-$RbCustom.Add_Checked({ Set-ModeDisplay; Set-Gear5Preset })
+$RbSafe.Add_Checked({ Set-ModeDisplay; Set-SafePreset })
+$RbInsane.Add_Checked({ Set-ModeDisplay; Set-InsanePreset })
+$RbCustom.Add_Checked({ Set-ModeDisplay; Set-CustomPreset })
 $BtnNavPreset.Add_Click({ $MainTab.SelectedIndex = 0 })
 $BtnNavTweaks.Add_Click({ $MainTab.SelectedIndex = 1 })
 $BtnNavInfo.Add_Click({ $MainTab.SelectedIndex = 2 })
@@ -1789,9 +1909,7 @@ $BtnApply.Add_Click({
 })
 
 Set-ModeDisplay
-Set-Gear2Preset
+Set-SafePreset
 $MainTab.SelectedIndex = 0
 
 $null = $window.ShowDialog()
-
-# Gear 4 - Aggressive Gaming
