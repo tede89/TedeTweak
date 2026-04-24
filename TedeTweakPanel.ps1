@@ -220,104 +220,6 @@ function Restore-LatestTedeBackup {
     return $result
 }
 
-function Get-TedeRiskLevel {
-    param(
-        [bool]$HasExtreme = $false,
-        [bool]$HasSecurity = $false,
-        [bool]$HasBCD = $false,
-        [bool]$HasMSI = $false,
-        [bool]$HasMemoryAggressive = $false
-    )
-
-    $score = 0
-    if ($HasExtreme)          { $score += 3 }
-    if ($HasSecurity)         { $score += 3 }
-    if ($HasBCD)              { $score += 2 }
-    if ($HasMSI)              { $score += 1 }
-    if ($HasMemoryAggressive) { $score += 1 }
-
-    if ($score -ge 6) { return 'ALTO' }
-    if ($score -ge 3) { return 'MEDIO' }
-    return 'BASSO'
-}
-
-function Get-TedeWarningMessages {
-    param(
-        [bool]$HasExtreme = $false,
-        [bool]$HasSecurity = $false,
-        [bool]$HasBCD = $false,
-        [bool]$HasMSI = $false,
-        [bool]$HasMemoryAggressive = $false
-    )
-
-    $warn = New-Object System.Collections.Generic.List[string]
-
-    if ($HasExtreme) {
-        $warn.Add('Debloat extreme puo rimuovere componenti/app che potresti voler tenere.')
-    }
-    if ($HasSecurity) {
-        $warn.Add('Security optional puo disattivare VBS, HVCI, LSA e hypervisor.')
-    }
-    if ($HasBCD) {
-        $warn.Add('BCD timer tweaks richiedono attenzione e spesso un riavvio.')
-    }
-    if ($HasMSI) {
-        $warn.Add('MSI mode non e ideale su ogni device/driver.')
-    }
-    if ($HasMemoryAggressive) {
-        $warn.Add('Memory aggressive disattiva Memory Compression.')
-    }
-
-    if ($warn.Count -eq 0) {
-        $warn.Add('Nessun warning sensibile rilevato.')
-    }
-
-    return ($warn -join "`r`n")
-}
-
-function Confirm-TedeSensitiveSelection {
-    param(
-        [string]$RiskText,
-        [string]$WarningText
-    )
-
-    $msg = @"
-Livello rischio: $RiskText
-
-Avvisi:
-$WarningText
-
-Vuoi continuare?
-"@
-
-    $res = [System.Windows.MessageBox]::Show(
-        $msg,
-        'TedeTweak - Conferma modifiche sensibili',
-        [System.Windows.MessageBoxButton]::YesNo,
-        [System.Windows.MessageBoxImage]::Warning
-    )
-
-    return ($res -eq [System.Windows.MessageBoxResult]::Yes)
-}
-
-function Get-TedeSelectedBlocks {
-    param(
-        [object]$ChkDebloatExtreme,
-        [object]$ChkSecurityOptional,
-        [object]$ChkBCD,
-        [object]$ChkMSI,
-        [object]$ChkMemoryAggressive
-    )
-
-    [pscustomobject]@{
-        HasExtreme          = [bool]($ChkDebloatExtreme -and $ChkDebloatExtreme.IsChecked)
-        HasSecurity         = [bool]($ChkSecurityOptional -and $ChkSecurityOptional.IsChecked)
-        HasBCD              = [bool]($ChkBCD -and $ChkBCD.IsChecked)
-        HasMSI              = [bool]($ChkMSI -and $ChkMSI.IsChecked)
-        HasMemoryAggressive = [bool]($ChkMemoryAggressive -and $ChkMemoryAggressive.IsChecked)
-    }
-}
-
 function Open-TedePath {
     param([string]$Path)
     try {
@@ -1086,85 +988,6 @@ function Apply-NetworkAdapterMode {
     return $applied
 }
 
-function Apply-DnsOnly {
-    param([string]$Mode)
-
-    $applied = @()
-    $adapter = Get-ActiveTedeAdapter -Mode $Mode
-    if ($null -eq $adapter) {
-        return 'SKIP DNS only: nessun adapter attivo'
-    }
-
-    try {
-        netsh interface ip set dns name="$($adapter.Name)" static 1.1.1.1 primary | Out-Null
-        netsh interface ip add dns name="$($adapter.Name)" 1.0.0.1 index=2 | Out-Null
-        $applied += ('DNS Cloudflare impostato su ' + $adapter.Name)
-    }
-    catch {
-        $applied += ('SKIP DNS only: ' + $_.Exception.Message)
-    }
-
-    return $applied
-}
-
-function Apply-TcpLatencyOnly {
-    $applied = @()
-
-    try {
-        netsh interface tcp set global autotuninglevel=normal | Out-Null
-        $applied += 'autotuninglevel normal'
-    } catch { $applied += 'SKIP autotuninglevel' }
-
-    try {
-        netsh interface tcp set global rss=enabled | Out-Null
-        $applied += 'rss enabled'
-    } catch { $applied += 'SKIP rss' }
-
-    try {
-        netsh interface tcp set global rsc=disabled | Out-Null
-        $applied += 'rsc disabled'
-    } catch { $applied += 'SKIP rsc' }
-
-    try {
-        netsh interface tcp set global ecncapability=disabled | Out-Null
-        $applied += 'ecncapability disabled'
-    } catch { $applied += 'SKIP ecncapability' }
-
-    try {
-        netsh interface tcp set global timestamps=disabled | Out-Null
-        $applied += 'timestamps disabled'
-    } catch { $applied += 'SKIP timestamps' }
-
-    try {
-        $ifaces = Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -ErrorAction SilentlyContinue
-        $count = 0
-        foreach ($iface in $ifaces) {
-            New-ItemProperty -Path $iface.PSPath -Name 'TcpAckFrequency' -PropertyType DWord -Value 1 -Force | Out-Null
-            New-ItemProperty -Path $iface.PSPath -Name 'TCPNoDelay' -PropertyType DWord -Value 1 -Force | Out-Null
-            New-ItemProperty -Path $iface.PSPath -Name 'TcpDelAckTicks' -PropertyType DWord -Value 0 -Force | Out-Null
-            $count++
-        }
-        $applied += ('TCP low latency su interfacce: ' + $count)
-    }
-    catch {
-        $applied += ('SKIP TCP interface tuning: ' + $_.Exception.Message)
-    }
-
-    return $applied
-}
-
-function Apply-NduOffOnly {
-    $applied = @()
-    try {
-        Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Ndu' -Name 'Start' -Value 4
-        $applied += 'Ndu Start = 4'
-    }
-    catch {
-        $applied += ('SKIP Ndu off: ' + $_.Exception.Message)
-    }
-    return $applied
-}
-
 function Apply-MSIMode {
     $applied = @()
     $count = 0
@@ -1360,102 +1183,6 @@ function New-TedeValidationReport {
     return 'Validation report salvato: ' + $file
 }
 
-function Test-TedeRegistryValue {
-    param(
-        [string]$Path,
-        [string]$Name,
-        [object]$Expected
-    )
-
-    try {
-        $value = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name
-        if ($value -eq $Expected) {
-            return "OK  | $Name = $value"
-        }
-        return "FAIL| $Name = $value (atteso: $Expected)"
-    }
-    catch {
-        return "SKIP| $Name non trovato su $Path"
-    }
-}
-
-function Test-TedeServiceStartupDisabled {
-    param([string]$Name)
-
-    try {
-        $svc = Get-Service -Name $Name -ErrorAction Stop
-        if ($svc.StartType -eq 'Disabled') {
-            return "OK  | Servizio $Name disabilitato"
-        }
-        return "FAIL| Servizio $Name startup = $($svc.StartType)"
-    }
-    catch {
-        return "SKIP| Servizio $Name non trovato"
-    }
-}
-
-function Test-TedePowerScheme {
-    try {
-        $out = powercfg -getactivescheme 2>$null | Out-String
-        if ($out -match 'Ultimate Performance') {
-            return 'OK  | Power plan Ultimate Performance attivo'
-        }
-        return ('SKIP| Power plan attivo: ' + $out.Trim())
-    }
-    catch {
-        return 'SKIP| Impossibile leggere il power plan attivo'
-    }
-}
-
-function New-TedePostCheckReport {
-    Initialize-TedeWorkspace
-
-    $reportRoot = Join-Path $script:TedeDataRoot 'Reports'
-    if (-not (Test-Path $reportRoot)) {
-        New-Item -Path $reportRoot -ItemType Directory -Force | Out-Null
-    }
-
-    $file = Join-Path $reportRoot ("postcheck_{0}.txt" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
-    $lines = New-Object System.Collections.Generic.List[string]
-
-    $lines.Add('TEDETWEAK POST CHECK')
-    $lines.Add('Date: ' + (Get-Date))
-    $lines.Add('')
-
-    $lines.Add('[Scheduler / MMCSS]')
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'Win32PrioritySeparation' -Expected 38))
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Expected 0))
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Expected 4294967295))
-    $lines.Add('')
-
-    $lines.Add('[Gaming]')
-    $lines.Add((Test-TedeRegistryValue -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Expected 0))
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Expected 2))
-    $lines.Add('')
-
-    $lines.Add('[Memory]')
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'DisablePagingExecutive' -Expected 1))
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'LargeSystemCache' -Expected 0))
-    $lines.Add('')
-
-    $lines.Add('[Network]')
-    $lines.Add((Test-TedeRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Ndu' -Name 'Start' -Expected 4))
-    $lines.Add('')
-
-    $lines.Add('[Services]')
-    $lines.Add((Test-TedeServiceStartupDisabled -Name 'SysMain'))
-    $lines.Add((Test-TedeServiceStartupDisabled -Name 'DiagTrack'))
-    $lines.Add('')
-
-    $lines.Add('[Power]')
-    $lines.Add((Test-TedePowerScheme))
-
-    Set-Content -Path $file -Value $lines -Encoding UTF8
-    Write-TedeLog ("Post-check report creato: " + $file)
-
-    return $file
-}
-
 function Apply-FortniteSpecific {
     $applied = @()
     $roots = @('C:\Program Files\Epic Games', 'C:\Program Files (x86)\Epic Games', 'D:\Epic Games', 'E:\Epic Games')
@@ -1596,13 +1323,7 @@ function Apply-WindowsUpdateDisable {
         Set-Service -Name 'UsoSvc' -StartupType Disabled | Out-Null
         $applied += 'UsoSvc disabilitato'
         Stop-Service -Name 'DoSvc' -Force -ErrorAction SilentlyContinue
-        try {
-    Set-Service -Name 'DoSvc' -StartupType Disabled -ErrorAction Stop | Out-Null
-    $applied += 'DoSvc disabilitato'
-}
-catch {
-    $applied += "SKIP DoSvc: $($_.Exception.Message)"
-}
+        Set-Service -Name 'DoSvc' -StartupType Disabled | Out-Null
         $applied += 'Delivery Optimization disabilitato'
         Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name 'NoAutoUpdate' -Value 1 -Type DWord -Force | Out-Null
         $applied += 'NoAutoUpdate policy = 1'
@@ -1643,28 +1364,17 @@ function Apply-TelemetryAdvanced {
 
 function Apply-ETWOff {
     $applied = @()
-    $etwSessions = @('DiagLog','Diagtrack-Listener','NOLAAS','WiFiSession')
+    $etwSessions = @('DiagLog','Diagtrack-Listener','NOOLAS','WiFiSession')
     foreach ($s in $etwSessions) {
         try {
             & logman.exe stop $s -ets 2>$null | Out-Null
             $applied += "ETW session stopped: $s"
         } catch { $applied += "SKIP ETW $s" }
     }
-
-    $diagPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener'
     try {
-        if (Test-Path $diagPath) {
-            Set-ItemProperty -Path $diagPath -Name 'Start' -Value 0 -Type DWord -Force | Out-Null
-            $applied += 'AutoLogger-Diagtrack disabled'
-        }
-        else {
-            $applied += 'SKIP AutoLogger-Diagtrack path non presente'
-        }
-    }
-    catch {
-        $applied += "SKIP AutoLogger-Diagtrack: $($_.Exception.Message)"
-    }
-
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener' -Name 'Start' -Value 0 -Type DWord -Force | Out-Null
+        $applied += 'AutoLogger-Diagtrack disabled'
+    } catch { $applied += 'SKIP AutoLogger-Diagtrack' }
     return $applied
 }
 
@@ -1876,83 +1586,19 @@ class TimerRes {
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,12">
-    <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="220"/>
-    </Grid.ColumnDefinitions>
-
-    <Border Grid.Column="0"
-            Background="#1A120E"
-            BorderBrush="#8F642E"
-            BorderThickness="1"
-            CornerRadius="12"
-            Padding="16"
-            Margin="0,0,12,0">
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="64"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <Border Width="52"
-                    Height="52"
-                    CornerRadius="10"
-                    Background="#2A1A12"
-                    BorderBrush="#D6A85F"
-                    BorderThickness="1"
-                    VerticalAlignment="Top">
-                <TextBlock Text="☠"
-                           FontSize="24"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           TextAlignment="Center"
-                           Foreground="#F4D28C"
-                           Margin="0,9,0,0"/>
-            </Border>
-
-            <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                <TextBlock Text="TEDETWEAK COMMAND DECK"
-                           FontSize="24"
-                           FontWeight="Bold"
-                           Foreground="#FFF1CC"/>
-                <TextBlock Name="TxtModeLabel"
-                           Text="Route: EAST BLUE"
-                           FontSize="13"
-                           Margin="0,4,0,6"
-                           Foreground="#C9B28D"/>
-                <TextBlock Text="Latency, frametime and 1% low oriented control panel."
-                           FontSize="12"
-                           Foreground="#A89274"
-                           TextWrapping="Wrap"/>
-            </StackPanel>
-        </Grid>
-    </Border>
-
-    <Border Name="ModeChipBorder"
-            Grid.Column="1"
-            Background="#0D9488"
-            BorderBrush="#E6C27A"
-            BorderThickness="1"
-            CornerRadius="14"
-            Padding="16,12"
-            VerticalAlignment="Stretch">
-        <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="ACTIVE GEAR"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       Foreground="#FBECC8"
-                       HorizontalAlignment="Center"/>
-            <TextBlock Name="TxtModeChip"
-                       Text="Gear 2"
-                       FontSize="18"
-                       FontWeight="Bold"
-                       Foreground="#FFF8E7"
-                       HorizontalAlignment="Center"
-                       Margin="0,4,0,0"/>
-        </StackPanel>
-    </Border>
-</Grid>
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="TedeTweak Panel" FontSize="26" FontWeight="Bold" Foreground="#F8E7B6"/>
+                    <TextBlock Name="TxtModeLabel" Text="Route: EAST BLUE" FontSize="13" Margin="0,4,0,0" Foreground="#9CA3AF"/>
+                </StackPanel>
+                <Border Name="ModeChipBorder" Grid.Column="1" Background="#B63A2B" CornerRadius="14" Padding="12,6" VerticalAlignment="Center">
+                    <TextBlock Name="TxtModeChip" Text="EAST BLUE" FontWeight="SemiBold" Foreground="#F8E7B6"/>
+                </Border>
+            </Grid>
 
             <TabControl Name="MainTab" Grid.Row="1" Background="#071626" BorderBrush="#8A6735">
                 <TabItem Header="Crew Routes">
@@ -1963,41 +1609,36 @@ class TimerRes {
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <Border Background="#241611" BorderBrush="#8F642E" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,12">
-    <StackPanel>
-        <TextBlock Text="Crew Route"
-                   FontSize="16"
-                   FontWeight="Bold"
-                   Foreground="#FFF1CC"
-                   Margin="0,0,0,4"/>
-        <TextBlock Text="Scegli il profilo di spinta del pannello."
-                   FontSize="12"
-                   Foreground="#BFA784"
-                   Margin="0,0,0,12"/>
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="Crew Route" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,8"/>
+                                    <RadioButton Name="RbSafe" Content="Gear 2 (Consigliato)" IsChecked="True" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbInsane" Content="Joy Boy (Tryhard)" Margin="0,0,0,6" Foreground="#F7E7C1"/>
+                                    <RadioButton Name="RbCustom" Content="Grand Line (Custom)" Margin="0,0,0,0" Foreground="#F7E7C1"/>
+                                </StackPanel>
+                            </Border>
 
-        <Border Background="#1D2B29" BorderBrush="#2C8E83" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,8">
-            <RadioButton Name="RbSafe"
-                         Content="East Blue  •  consigliato"
-                         IsChecked="True"
-                         Foreground="#EAFBF7"
-                         FontWeight="SemiBold"/>
-        </Border>
-
-        <Border Background="#331313" BorderBrush="#B33A3A" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,8">
-            <RadioButton Name="RbInsane"
-                         Content="Yonko Mode  •  tryhard"
-                         Foreground="#FFF0F0"
-                         FontWeight="SemiBold"/>
-        </Border>
-
-        <Border Background="#1B1E24" BorderBrush="#596273" BorderThickness="1" CornerRadius="8" Padding="10">
-            <RadioButton Name="RbCustom"
-                         Content="Grand Line Custom  •  manuale"
-                         Foreground="#E5E7EB"
-                         FontWeight="SemiBold"/>
-        </Border>
-    </StackPanel>
-</Border>
+                            <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="Configurazione hardware" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Rete" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <ComboBox Name="CmbNetMode" SelectedIndex="0" Margin="0,0,0,10">
+                                        <ComboBoxItem Content="LAN / Ethernet"/>
+                                        <ComboBoxItem Content="Wi-Fi"/>
+                                    </ComboBox>
+                                    <TextBlock Text="CPU" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <ComboBox Name="CmbCpu" SelectedIndex="0" Margin="0,0,0,10">
+                                        <ComboBoxItem Content="AMD Ryzen"/>
+                                        <ComboBoxItem Content="Intel Core"/>
+                                    </ComboBox>
+                                    <TextBlock Text="GPU" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <ComboBox Name="CmbGpu" SelectedIndex="1">
+                                        <ComboBoxItem Content="AMD Radeon"/>
+                                        <ComboBoxItem Content="NVIDIA GeForce"/>
+                                        <ComboBoxItem Content="Intel Arc"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
                         <Border Grid.Column="1" Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="14">
@@ -2077,23 +1718,23 @@ class TimerRes {
                             </Border>
 
                             <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
-    <StackPanel>
-        <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,4"/>
-        <TextBlock Text="Blocchi per input delay, reattività e frametime più stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
+                                <StackPanel>
+                                    <TextBlock Text="Engine Core" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Blocchi per input delay, reattivita e frametime piu stabili." TextWrapping="Wrap" Foreground="#F7E7C1" Margin="0,0,0,8"/>
+                                    <CheckBox Name="ChkPowerAdvanced" Content="Power advanced (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkScheduler" Content="Scheduler / MMCSS (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkInput" Content="Input tweaks (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkUsb
+                                    <CheckBox Name="ChkGpuTweaks" Content="GPU driver tweaks (NVIDIA/AMD)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkPagefile" Content="Pagefile fisso RAM size" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkWUpdateOff" Content="Windows Update OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkETWOff" Content="ETW Telemetry OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkShaderClean" Content="Shader cache cleanup" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkTimerRes" Content="Timer Resolution 1ms" Foreground="#F7E7C1" Margin="0,0,0,4"/>
+                                    <CheckBox Name="ChkSpectreOff" Content="Spectre/Meltdown OFF (RISCHIO)" Foreground="#F7E7C1" Margin="0,0,0,4"/>" Content="USB low latency (reale)" Foreground="#F7E7C1"/>
+                                </StackPanel>
+                            </Border>
 
-        <CheckBox Name="ChkPowerAdvanced" Content="Power advanced reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkScheduler" Content="Scheduler MMCSS reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkInput" Content="Input tweaks reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkUsb" Content="USB low latency reale" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkGpuTweaks" Content="GPU driver tweaks NVIDIA/AMD" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkPagefile" Content="Pagefile fisso RAM size" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkWUpdateOff" Content="Windows Update OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkETWOff" Content="ETW Telemetry OFF" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkShaderClean" Content="Shader cache cleanup" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkTimerRes" Content="Timer Resolution 1ms" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-        <CheckBox Name="ChkSpectreOff" Content="Spectre/Meltdown OFF RISCHIO" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-    </StackPanel>
-</Border>
                             <Border Background="#2A1A12" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
                                 <StackPanel>
                                     <TextBlock Text="Memory" FontSize="15" FontWeight="Bold" Foreground="#F8E7B6" Margin="0,0,0,4"/>
@@ -2130,9 +1771,6 @@ class TimerRes {
                                     <CheckBox Name="ChkNetworkAdapter" Content="Network adapter mode (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                     <CheckBox Name="ChkMSI" Content="MSI mode (reale)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                     <CheckBox Name="ChkBCD" Content="BCD / timer tweaks (reale)" Foreground="#F7E7C1"/>
-                                    <CheckBox Name="ChkDnsOnly" Content="DNS only (Cloudflare)" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkTcpLatency" Content="TCP low latency only" Foreground="#F7E7C1" Margin="0,0,0,4"/>
-                                    <CheckBox Name="ChkNduOff" Content="NDU off only" Foreground="#F7E7C1" Margin="0,0,0,4"/>
                                 </StackPanel>
                             </Border>
 
@@ -2172,70 +1810,13 @@ class TimerRes {
                 </TabItem>
 
                 <TabItem Header="Captain Log">
-    <Grid Background="#14100C" Margin="8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <Border Background="#241611"
-                BorderBrush="#8F642E"
-                BorderThickness="1"
-                CornerRadius="10"
-                Padding="16"
-                Margin="0,0,0,12">
-            <StackPanel>
-                <TextBlock Text="Captain Log"
-                           FontSize="18"
-                           FontWeight="Bold"
-                           Foreground="#FFF1CC"/>
-                <TextBlock Text="Stato attuale del preset, warning attivi e focus competitivo del pannello."
-                           Margin="0,6,0,0"
-                           Foreground="#C9B28D"
-                           TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
-
-        <Grid Grid.Row="1">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Row="0" Grid.Column="0" Background="#1F1612" BorderBrush="#8A6735" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,10,10">
-                <StackPanel>
-                    <TextBlock Text="Hardware Profile" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC"/>
-                    <TextBlock Name="TxtHardwareInfo" Text="Analisi hardware in attesa..." Foreground="#F7E7C1" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Row="0" Grid.Column="1" Background="#201511" BorderBrush="#B45309" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,10">
-                <StackPanel>
-                    <TextBlock Text="Warnings" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC"/>
-                    <TextBlock Name="TxtWarningsInfo" Text="Nessun warning importante." Foreground="#F7E7C1" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Row="1" Grid.Column="0" Background="#13211D" BorderBrush="#0D9488" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,10,0">
-                <StackPanel>
-                    <TextBlock Text="Risk Level" FontSize="15" FontWeight="Bold" Foreground="#ECFDF5"/>
-                    <TextBlock Name="TxtRiskLevel" Text="SAFE" FontSize="18" FontWeight="Bold" Foreground="#99F6E4" Margin="0,8,0,0"/>
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Row="1" Grid.Column="1" Background="#221717" BorderBrush="#DC2626" BorderThickness="1" CornerRadius="10" Padding="14">
-                <StackPanel>
-                    <TextBlock Text="Reboot Impact" FontSize="15" FontWeight="Bold" Foreground="#FFF1CC"/>
-                    <TextBlock Name="TxtRebootInfo" Text="Riavvio consigliato dopo tweak di rete, timer o sicurezza." Foreground="#F7E7C1" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
-        </Grid>
-    </Grid>
-</TabItem>
+                    <Grid Background="#071626">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                            <TextBlock Text="One Piece Performance Panel" FontSize="18" FontWeight="Bold" Foreground="#F8E7B6" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="One Piece Performance Panel: build piratesca premium con rotte, engine core, danger notes e captain output." TextWrapping="Wrap" Foreground="#F7E7C1" HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
             </TabControl>
 
             <Grid Grid.Row="2" Margin="0,10,0,0">
@@ -2274,8 +1855,6 @@ $ModeChipBorder = $window.FindName('ModeChipBorder')
 $TxtPresetDescription = $window.FindName('TxtPresetDescription')
 $TxtStatus = $window.FindName('TxtStatus')
 $BtnApply = $window.FindName('BtnApply')
-$TxtWarningsInfo = $window.FindName('TxtWarningsInfo')
-$TxtRebootInfo   = $window.FindName('TxtRebootInfo')
 
 $ChkServicesBase = $window.FindName('ChkServicesBase')
 $ChkDebloatSafe = $window.FindName('ChkDebloatSafe')
@@ -2343,23 +1922,6 @@ $DebloatBoxes['Sound Recorder'] = $window.FindName('DbSoundRecorder')
 $DebloatBoxes['Alarms'] = $window.FindName('DbAlarms')
 $DebloatBoxes['Mail and Calendar'] = $window.FindName('DbMailCalendar')
 
-$TxtHardwareInfo = $window.FindName('TxtHardwareInfo')
-$TxtWarningsInfo = $window.FindName('TxtWarningsInfo')
-$TxtRiskLevel = $window.FindName('TxtRiskLevel')
-$TxtRebootInfo = $window.FindName('TxtRebootInfo')
-
-$ChkDnsOnly              = $window.FindName('ChkDnsOnly')
-$ChkTcpLatency           = $window.FindName('ChkTcpLatency')
-$ChkNduOff               = $window.FindName('ChkNduOff')
-
-$RefreshCaptainLog = {
-    Update-TedeDynamicInfo `
-        -HardwareBlock $TxtHardwareInfo `
-        -WarningsBlock $TxtWarningsInfo `
-        -RiskBlock $TxtRiskLevel `
-        -RebootBlock $TxtRebootInfo
-}
-
 $RecommendedDebloat = @(
     'Clipchamp','Bing News','Get Help','Get Started','Office Hub','Solitaire','People','Skype','Teams Consumer',
     'Xbox TCUI','Xbox App','Xbox Game Overlay','Xbox Gaming Overlay','Xbox Identity Provider','Xbox Speech To Text',
@@ -2388,8 +1950,6 @@ function Set-DebloatSelection {
     }
 }
 
-
-
 function Set-ModeDisplay {
     if ($RbSafe.IsChecked) {
         $TxtModeLabel.Text = 'Luffy: GEAR 2'
@@ -2410,21 +1970,6 @@ function Set-ModeDisplay {
         $TxtPresetDescription.Text = 'Grand Line: applica solo i gruppi selezionati nel tab Tweaks, incluso debloat extreme custom.'
     }
 }
-
-function Get-TedeCurrentPresetName {
-    if ($RbSafe.IsChecked)   { return 'GEAR 2' }
-    if ($RbInsane.IsChecked) { return 'JOY BOY' }
-    return 'GRAND LINE'
-}
-
-$sel = Get-TedeSelectedBlocks -ChkDebloatExtreme $ChkDebloatExtreme -ChkSecurityOptional $ChkSecurityOptional -ChkBCD $ChkBCD -ChkMSI $ChkMSI -ChkMemoryAggressive $ChkMemoryAggressive
-$riskNow = Get-TedeRiskLevel -HasExtreme $sel.HasExtreme -HasSecurity $sel.HasSecurity -HasBCD $sel.HasBCD -HasMSI $sel.HasMSI -HasMemoryAggressive $sel.HasMemoryAggressive
-$warnNow = Get-TedeWarningMessages -HasExtreme $sel.HasExtreme -HasSecurity $sel.HasSecurity -HasBCD $sel.HasBCD -HasMSI $sel.HasMSI -HasMemoryAggressive $sel.HasMemoryAggressive
-Update-TedeDynamicInfo `
-    -HardwareBlock $TxtHardwareInfo `
-    -WarningsBlock $TxtWarningsInfo `
-    -RiskBlock $TxtRiskLevel `
-    -RebootBlock $TxtRebootInfo
 
 function Set-SafePreset {
     $ChkServicesBase.IsChecked = $true
@@ -2471,103 +2016,69 @@ function Set-SafePreset {
 
 function Set-InsanePreset {
     $ChkServicesBase.IsChecked = $true
-
     $ChkDebloatSafe.IsChecked = $false
-    $ChkDebloatAggressive.IsChecked = $false
-    $ChkDebloatExtreme.IsChecked = $true
-    $ChkDebloatUsers.IsChecked = $true
-    $ChkDebloatProvisioned.IsChecked = $true
-
+    $ChkDebloatAggressive.IsChecked = $true
+    $ChkDebloatExtreme.IsChecked = $false
     $ChkPowerAdvanced.IsChecked = $true
     $ChkScheduler.IsChecked = $true
     $ChkInput.IsChecked = $true
     $ChkUsb.IsChecked = $true
-
     $ChkMemoryLite.IsChecked = $false
     $ChkMemoryAggressive.IsChecked = $true
-
     $ChkCleanupSafe.IsChecked = $true
     $ChkStorage.IsChecked = $true
     $ChkDisplay.IsChecked = $true
     $ChkCache.IsChecked = $true
     $ChkCleanupPro.IsChecked = $true
-
     $ChkNetworkCommon.IsChecked = $true
     $ChkNetworkAdapter.IsChecked = $true
-    $ChkDnsOnly.IsChecked = $true
-    $ChkTcpLatency.IsChecked = $true
-    $ChkNduOff.IsChecked = $true
     $ChkMSI.IsChecked = $true
     $ChkBCD.IsChecked = $true
-
     $ChkGpuVendor.IsChecked = $true
-    $ChkGameExeGeneric.IsChecked = $true
+    $ChkGameExeGeneric.IsChecked = $false
     $ChkNicAdvanced.IsChecked = $true
     $ChkOverlayKiller.IsChecked = $true
     $ChkSecurityOptional.IsChecked = $true
     $ChkVendorCleanup.IsChecked = $true
     $ChkValidationReport.IsChecked = $true
-
     $ChkGaming.IsChecked = $true
     $ChkFortnite.IsChecked = $true
+    Set-DebloatSelection -Items $RecommendedDebloat
+    $TxtStatus.Text = 'Preset GEAR 4 caricato.'
 
-    Set-DebloatSelection -Items @($DebloatBoxes.Keys)
 
-    $TxtStatus.Text = 'Preset JOY BOY caricato: full send.'
+    $applied += Apply-GpuTweaksAuto
+    $applied += Apply-PagefileFixed
+    $applied += Apply-WindowsUpdateDisable
+    $applied += Apply-TelemetryAdvanced
+    $applied += Apply-ETWOff
+    $applied += Apply-InterruptAffinity
+    $applied += Apply-ShaderCacheClean
+    $applied += Apply-DwmFrameInterval
+    $applied += Apply-CoreParkingOff
+    $applied += Apply-SpectreMitigationsOff
+    $applied += Apply-RSSQueuePinning
+    $applied += Apply-NVMeLatency
+    $applied += Apply-DPCTweaks
+    $applied += Apply-TaskOffload
 }
 
-
 function Set-CustomPreset {
-    $ChkServicesBase.IsChecked        = $false
-    $ChkDebloatSafe.IsChecked         = $false
-    $ChkDebloatAggressive.IsChecked   = $false
-    $ChkDebloatExtreme.IsChecked      = $false
-
-    $ChkPowerAdvanced.IsChecked       = $false
-    $ChkScheduler.IsChecked           = $false
-    $ChkInput.IsChecked               = $false
-    $ChkUsb.IsChecked                 = $false
-
-    $ChkMemoryLite.IsChecked          = $false
-    $ChkMemoryAggressive.IsChecked    = $false
-
-    $ChkCleanupSafe.IsChecked         = $false
-    $ChkStorage.IsChecked             = $false
-    $ChkDisplay.IsChecked             = $false
-    $ChkCache.IsChecked               = $false
-    $ChkCleanupPro.IsChecked          = $false
-
-    $ChkNetworkCommon.IsChecked       = $false
-    $ChkNetworkAdapter.IsChecked      = $false
-    $ChkMSI.IsChecked                 = $false
-    $ChkBCD.IsChecked                 = $false
-
-    $ChkGpuVendor.IsChecked           = $false
-    $ChkGameExeGeneric.IsChecked      = $false
-    $ChkNicAdvanced.IsChecked         = $false
-    $ChkOverlayKiller.IsChecked       = $false
-    $ChkSecurityOptional.IsChecked    = $false
-    $ChkVendorCleanup.IsChecked       = $false
-    $ChkValidationReport.IsChecked    = $false
-
-    $ChkGaming.IsChecked              = $false
-    $ChkFortnite.IsChecked            = $false
-
-    $ChkDebloatUsers.IsChecked        = $true
-    $ChkDebloatProvisioned.IsChecked  = $true
-
-    $ChkDnsOnly.IsChecked    = $false
-    $ChkTcpLatency.IsChecked = $false
-    $ChkNduOff.IsChecked     = $false
-    
-
-
-    if ($TxtGameExePath) {
-        $TxtGameExePath.Text = ""
-    }
-
-    Set-DebloatSelection -Items @()
-    $TxtStatus.Text = "Modalita GRAND LINE CUSTOM attiva. Modifica le checkbox a piacere."
+    if ($ChkGpuTweaks.IsChecked) { $done += Apply-GpuTweaksAuto }
+    if ($ChkPagefile.IsChecked) { $done += Apply-PagefileFixed }
+    if ($ChkWUpdateOff.IsChecked) { $done += Apply-WindowsUpdateDisable }
+    if ($ChkETWOff.IsChecked) { $done += Apply-ETWOff }
+    if ($ChkShaderClean.IsChecked) { $done += Apply-ShaderCacheClean }
+    if ($ChkTimerRes.IsChecked) { $done += Set-TimerResolution }
+    if ($ChkSpectreOff.IsChecked) { $done += Apply-SpectreMitigationsOff }
+    $ChkGpuVendor.IsChecked = $false
+    $ChkGameExeGeneric.IsChecked = $false
+    $ChkNicAdvanced.IsChecked = $false
+    $ChkOverlayKiller.IsChecked = $false
+    $ChkSecurityOptional.IsChecked = $false
+    $ChkVendorCleanup.IsChecked = $false
+    $ChkValidationReport.IsChecked = $false
+    $TxtStatus.Text = 'Modalita JOY BOY attiva. Seleziona manualmente i tweak da applicare.'
 }
 
 $RbSafe.Add_Checked({ Set-ModeDisplay; Set-SafePreset })
@@ -2585,58 +2096,22 @@ $ChkDebloatExtreme.Add_Checked({ if ($ChkDebloatSafe.IsChecked) { $ChkDebloatSaf
 
 $BtnDebloatRecommended.Add_Click({ Set-DebloatSelection -Items $RecommendedDebloat; $TxtStatus.Text = 'Debloat consigliato selezionato.' })
 $BtnDebloatAll.Add_Click({ Set-DebloatSelection -Items @($DebloatBoxes.Keys); $TxtStatus.Text = 'Tutti i debloat selezionati.'
-    Update-TedeDynamicInfo `
-    -HardwareBlock $TxtHardwareInfo `
-    -WarningsBlock $TxtWarningsInfo `
-    -RiskBlock $TxtRiskLevel `
-    -RebootBlock $TxtRebootInfo -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
+    Update-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
 $BtnDebloatClear.Add_Click({ Set-DebloatSelection -Items @(); $TxtStatus.Text = 'Debloat custom pulito.'
-    Update-TedeDynamicInfo `
-    -HardwareBlock $TxtHardwareInfo `
-    -WarningsBlock $TxtWarningsInfo `
-    -RiskBlock $TxtRiskLevel `
-    -RebootBlock $TxtRebootInfo -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
+    Update-TedeDynamicInfo -HardwareBlock $TxtHardwareInfo -WarningsBlock $TxtWarnings -RiskBlock $TxtRiskLevel -CmbPreset $CmbPreset -ChkDebloatAggressive $ChkDebloatAggressive -ChkDebloatExtreme $ChkDebloatExtreme -ChkNetworkCommon $ChkNetworkCommon -ChkNetworkAdapter $ChkNetworkAdapter -ChkMSI $ChkMSI -ChkBCD $ChkBCD -ChkCleanupPro $ChkCleanupPro })
 
-if ($BtnRestoreBackup) {
-    $BtnRestoreBackup.Add_Click({
-        Ensure-RunAsAdmin
-        Initialize-TedeWorkspace
-        $items = Restore-LatestTedeBackup
-        foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
+$BtnRestoreBackup.Add_Click({
+    Ensure-RunAsAdmin
+    Initialize-TedeWorkspace
+    $items = Restore-LatestTedeBackup
+    foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
+    $TxtOutput.Text = ($items -join [Environment]::NewLine)
+})
 
-        if ($TxtOutput) {
-            $TxtOutput.Text = ($items -join [Environment]::NewLine)
-        }
-        elseif ($TxtStatus) {
-            $TxtStatus.Text = 'Restore completato. Controlla log e backup.'
-        }
-    })
-}
-
-if ($BtnRestoreBackup) {
-    $BtnRestoreBackup.Add_Click({
-        Ensure-RunAsAdmin
-        Initialize-TedeWorkspace
-        $items = Restore-LatestTedeBackup
-        foreach ($entry in $items) { Write-TedeLog $entry 'RESTORE' }
-
-        if ($TxtOutput) {
-            $TxtOutput.Text = ($items -join [Environment]::NewLine)
-        }
-        elseif ($TxtStatus) {
-            $TxtStatus.Text = 'Restore completato. Controlla il log/output.'
-        }
-    })
-}
-
-$sel = Get-TedeSelectedBlocks -ChkDebloatExtreme $ChkDebloatExtreme -ChkSecurityOptional $ChkSecurityOptional -ChkBCD $ChkBCD -ChkMSI $ChkMSI -ChkMemoryAggressive $ChkMemoryAggressive
-$riskNow = Get-TedeRiskLevel -HasExtreme $sel.HasExtreme -HasSecurity $sel.HasSecurity -HasBCD $sel.HasBCD -HasMSI $sel.HasMSI -HasMemoryAggressive $sel.HasMemoryAggressive
-$warnNow = Get-TedeWarningMessages -HasExtreme $sel.HasExtreme -HasSecurity $sel.HasSecurity -HasBCD $sel.HasBCD -HasMSI $sel.HasMSI -HasMemoryAggressive $sel.HasMemoryAggressive
-
-if (-not (Confirm-TedeSensitiveSelection -RiskText $riskNow -WarningText $warnNow)) {
-    $TxtStatus.Text = 'Operazione annullata dall''utente.'
-    return
-}
+$BtnOpenData.Add_Click({
+    Initialize-TedeWorkspace
+    Open-TedePath -Path $script:TedeDataRoot
+})
 
 $BtnApply.Add_Click({
     $done = New-Object System.Collections.Generic.List[string]
@@ -2670,30 +2145,13 @@ $BtnApply.Add_Click({
     if ($ChkValidationReport.IsChecked) { $selected.Add('Validation report') }
     if ($ChkGaming.IsChecked) { $selected.Add('Gaming common') }
     if ($ChkFortnite.IsChecked) { $selected.Add('Fortnite specific') }
-    if ($ChkDnsOnly -and $ChkDnsOnly.IsChecked) {
-    $mode = 'LAN'
-    if ($window.FindName('CmbNetMode').SelectedIndex -eq 1) { $mode = 'Wi-Fi' }
-    foreach ($item in (Apply-DnsOnly -Mode $mode)) { $done.Add($item) }
-}
 
-if ($ChkTcpLatency -and $ChkTcpLatency.IsChecked) {
-    foreach ($item in (Apply-TcpLatencyOnly)) { $done.Add($item) }
-}
-
-if ($ChkNduOff -and $ChkNduOff.IsChecked) {
-    foreach ($item in (Apply-NduOffOnly)) { $done.Add($item) }
-}
-
-if ($ChkDnsOnly.IsChecked) { $selected.Add('DNS only') }
-if ($ChkTcpLatency.IsChecked) { $selected.Add('TCP latency only') }
-if ($ChkNduOff.IsChecked) { $selected.Add('NDU off only') }
-
-    $riskNow = Get-TedeRiskLevel -HasExtreme #([bool]$ChkDebloatExtreme.IsChecked) -HasBCD ([bool]$ChkBCD.IsChecked) -HasMSI ([bool]$ChkMSI.IsChecked) -HasNetwork ([bool]($ChkNetworkCommon.IsChecked -or $ChkNetworkAdapter.IsChecked -or $ChkNicAdvanced.IsChecked)) -HasAggressiveDebloat ([bool]$ChkDebloatAggressive.IsChecked) -HasCleanup ([bool]($ChkCleanupPro.IsChecked -or $ChkOverlayKiller.IsChecked))
-    $warnNow = Get-TedeWarningMessages -HasExtreme #([bool]$ChkDebloatExtreme.IsChecked) -HasBCD ([bool]$ChkBCD.IsChecked) -HasMSI ([bool]$ChkMSI.IsChecked) -HasNetwork ([bool]($ChkNetworkCommon.IsChecked -or $ChkNetworkAdapter.IsChecked -or $ChkNicAdvanced.IsChecked)) -HasAggressiveDebloat ([bool]$ChkDebloatAggressive.IsChecked) -HasCleanup ([bool]($ChkCleanupPro.IsChecked -or $ChkOverlayKiller.IsChecked))
-    #if (-not (Confirm-TedeSensitiveSelection -RiskText $riskNow -WarningText $warnNow)) {
-       #$TxtStatus.Text = "Applicazione annullata dall'utente."
-        #return
-    #}
+    $riskNow = Get-TedeRiskLevel -HasExtreme ([bool]$ChkDebloatExtreme.IsChecked) -HasBCD ([bool]$ChkBCD.IsChecked) -HasMSI ([bool]$ChkMSI.IsChecked) -HasNetwork ([bool]($ChkNetworkCommon.IsChecked -or $ChkNetworkAdapter.IsChecked -or $ChkNicAdvanced.IsChecked)) -HasAggressiveDebloat ([bool]$ChkDebloatAggressive.IsChecked) -HasCleanup ([bool]($ChkCleanupPro.IsChecked -or $ChkOverlayKiller.IsChecked))
+    $warnNow = Get-TedeWarningMessages -HasExtreme ([bool]$ChkDebloatExtreme.IsChecked) -HasBCD ([bool]$ChkBCD.IsChecked) -HasMSI ([bool]$ChkMSI.IsChecked) -HasNetwork ([bool]($ChkNetworkCommon.IsChecked -or $ChkNetworkAdapter.IsChecked -or $ChkNicAdvanced.IsChecked)) -HasAggressiveDebloat ([bool]$ChkDebloatAggressive.IsChecked) -HasCleanup ([bool]($ChkCleanupPro.IsChecked -or $ChkOverlayKiller.IsChecked))
+    if (-not (Confirm-TedeSensitiveSelection -RiskText $riskNow -WarningText $warnNow)) {
+       $TxtStatus.Text = "Applicazione annullata dall'utente."
+        return
+    }
 
     if ($selected.Count -eq 0) {
         $TxtStatus.Text = 'Nessun tweak selezionato.'
@@ -2847,14 +2305,5 @@ if ($ChkNduOff.IsChecked) { $selected.Add('NDU off only') }
 Set-ModeDisplay
 Set-SafePreset
 $MainTab.SelectedIndex = 0
-
-$sel = Get-TedeSelectedBlocks -ChkDebloatExtreme $ChkDebloatExtreme -ChkSecurityOptional $ChkSecurityOptional -ChkBCD $ChkBCD -ChkMSI $ChkMSI -ChkMemoryAggressive $ChkMemoryAggressive
-$riskNow = Get-TedeRiskLevel -HasExtreme $sel.HasExtreme -HasSecurity $sel.HasSecurity -HasBCD $sel.HasBCD -HasMSI $sel.HasMSI -HasMemoryAggressive $sel.HasMemoryAggressive
-$warnNow = Get-TedeWarningMessages -HasExtreme $sel.HasExtreme -HasSecurity $sel.HasSecurity -HasBCD $sel.HasBCD -HasMSI $sel.HasMSI -HasMemoryAggressive $sel.HasMemoryAggressive
-Update-TedeDynamicInfo `
-    -HardwareBlock $TxtHardwareInfo `
-    -WarningsBlock $TxtWarningsInfo `
-    -RiskBlock $TxtRiskLevel `
-    -RebootBlock $TxtRebootInfo-RebootBlock $TxtRebootInfo -RiskText $riskNow -WarningsText $warnNow
 
 $null = $window.ShowDialog()
